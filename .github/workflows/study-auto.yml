@@ -1,5 +1,9 @@
 name: Study card auto formatter
 
+permissions:
+  contents: read   # 코드/파일은 읽기만
+  issues: write    # Issue 본문 수정 + 댓글 작성 허용
+
 on:
   issues:
     types: [labeled]
@@ -29,3 +33,4 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           python .github/scripts/study_auto.py
+
