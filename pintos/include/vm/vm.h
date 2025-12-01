@@ -2,6 +2,7 @@
 #define VM_VM_H
 #include <stdbool.h>
 #include "threads/palloc.h"
+#include "lib/kernel/hash.h"
 
 enum vm_type {
 	/* page not initialized */
@@ -34,7 +35,7 @@ enum vm_type {
 struct page_operations;
 struct thread;
 
-struct list frame_list;
+extern struct list frame_list;  /* Declaration only - defined in vm.c */
 
 #define VM_TYPE(type) ((type) & 7)
 
