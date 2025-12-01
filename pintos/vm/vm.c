@@ -87,7 +87,7 @@ spt_find_page (struct supplemental_page_table *spt, void *va) {
     temp_page.va = va;
 
     e = hash_find(&spt->hash, &temp_page.hash_elem);
-	
+
     if (e == NULL)
         return NULL;
 
@@ -131,12 +131,21 @@ vm_evict_frame (void) {
  * space.*/
 static struct frame *
 vm_get_frame (void) {
-	struct frame *frame = NULL;
 	/* TODO: Fill this function. */
+	void *kpage = palloc_get_page(PAL_USER);
+	if (kpage == NULL)
+		PANIC("to do");
 
-	ASSERT (frame != NULL);
-	ASSERT (frame->page == NULL);
-	return frame;
+	struct frame *f = malloc(sizeof(struct frame));
+	if (f == NULL) {
+		palloc_free_page(kpage);
+		PANIC("memory allocation failed");
+	}
+		
+	f->kva = kpage;
+	f->page = NULL;
+
+	return f;
 }
 
 /* Growing the stack. */
@@ -171,9 +180,10 @@ vm_dealloc_page (struct page *page) {
 
 /* Claim the page that allocate on VA. */
 bool
-vm_claim_page (void *va UNUSED) {
-	struct page *page = NULL;
-	/* TODO: Fill this function */
+vm_claim_page (void *va) {
+	struct page *page = spt_find_page(&thread_current()->spt, va);
+	if (page == NULL)
+		return false;
 
 	return vm_do_claim_page (page);
 }
@@ -181,15 +191,34 @@ vm_claim_page (void *va UNUSED) {
 /* Claim the PAGE and set up the mmu. */
 static bool
 vm_do_claim_page (struct page *page) {
-	struct frame *frame = vm_get_frame ();
+	struct frame *frame = vm_get_frame();
+    if (frame == NULL)
+        goto error;
 
-	/* Set links */
-	frame->page = page;
-	page->frame = frame;
+    /* Set links */
+    frame->page = page;
+    page->frame = frame;
 
-	/* TODO: Insert page table entry to map page's VA to frame's PA. */
+    /* 페이지 내용 채우기 (lazy load / swap-in) */
+    if (!swap_in(page, frame->kva))
+        goto error;
 
-	return swap_in (page, frame->kva);
+    /* VA → KVA 매핑 */
+    if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable))
+        goto error;
+
+    return true;
+
+error:
+    /* 링크 되돌리기 */
+    page->frame = NULL;
+    frame->page = NULL;
+
+    /* frame 자원 회수 */
+    palloc_free_page(frame->kva);
+    free(frame);
+
+    return false;
 }
 
 /* Initialize new supplemental page table */
