@@ -44,6 +44,7 @@ struct page {
 	const struct page_operations *operations;
 	void *va;              /* Address in terms of user space */
 	struct frame *frame;   /* Back reference for frame */
+	struct hash_elem hash_elem;
 
 	/* Your implementation */
 
@@ -85,6 +86,7 @@ struct page_operations {
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
+	struct hash hash;
 };
 
 #include "threads/thread.h"

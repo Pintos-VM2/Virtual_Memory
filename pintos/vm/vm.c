@@ -4,6 +4,23 @@
 #include "vm/vm.h"
 #include "vm/inspect.h"
 
+/* Hash function for supplemental page table */
+
+static uint64_t
+hash_page (const struct hash_elem *e, void *aux UNUSED) {
+    const struct page *p = hash_entry(e, struct page, hash_elem);
+    return hash_bytes(&p->va, sizeof p->va);
+}
+
+static bool
+less_page (const struct hash_elem *a,
+           const struct hash_elem *b,
+           void *aux UNUSED) {
+    const struct page *pa = hash_entry(a, struct page, hash_elem);
+    const struct page *pb = hash_entry(b, struct page, hash_elem);
+    return pa->va < pb->va;
+}
+
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
 void
@@ -62,21 +79,25 @@ err:
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
-spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
-	struct page *page = NULL;
-	/* TODO: Fill this function. */
+spt_find_page (struct supplemental_page_table *spt, void *va) {
+	struct page temp_page;
+    struct hash_elem *e;
 
-	return page;
+    va = pg_round_down (va);
+    temp_page.va = va;
+
+    e = hash_find(&spt->hash, &temp_page.hash_elem);
+	
+    if (e == NULL)
+        return NULL;
+
+    return hash_entry(e, struct page, hash_elem);
 }
 
 /* Insert PAGE into spt with validation. */
 bool
-spt_insert_page (struct supplemental_page_table *spt UNUSED,
-		struct page *page UNUSED) {
-	int succ = false;
-	/* TODO: Fill this function. */
-
-	return succ;
+spt_insert_page (struct supplemental_page_table *spt, struct page *page) {
+	return hash_insert(&spt->hash, &page->hash_elem) == NULL;
 }
 
 void
@@ -173,7 +194,8 @@ vm_do_claim_page (struct page *page) {
 
 /* Initialize new supplemental page table */
 void
-supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+supplemental_page_table_init (struct supplemental_page_table *spt) {
+	hash_init(&spt->hash, hash_page, less_page, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
