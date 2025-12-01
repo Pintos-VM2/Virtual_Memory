@@ -2,7 +2,15 @@
 
 #include "threads/malloc.h"
 #include "vm/vm.h"
+#include "threads/mmu.h"
 #include "vm/inspect.h"
+#include "lib/kernel/hash.h"
+#include "threads/vaddr.h"
+#include "lib/kernel/list.h"
+
+static void page_destructor (struct hash_elem *e, void *aux UNUSED);
+/* Global frame list for eviction */
+struct list frame_list;
 
 /* Hash function for supplemental page table */
 
@@ -104,7 +112,7 @@ spt_insert_page (struct supplemental_page_table *spt, struct page *page) {
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	vm_dealloc_page (page);
-	return true;
+	return;
 }
 
 /* Get the struct frame, that will be evicted. */
@@ -241,15 +249,15 @@ supplemental_page_table_copy (struct supplemental_page_table *dst ,
 	}
 
 	if (dst != NULL){
-		hash_init (&dst->spt_hash, (hash_hash_func *)page_hash_func, (hash_less_func *)page_less_func, NULL);
+		hash_init (&dst->hash, (hash_hash_func *)hash_page, (hash_less_func *)less_page, NULL);
 	}
 
-	hash_first(&i, &src->spt_hash);
+	hash_first(&i, &src->hash);
 
 	while (hash_next(&i) != NULL) {
 		struct hash_elem *e = hash_cur(&i);
 		struct page *page = hash_entry(e, struct page, hash_elem);
-		hash_insert(&dst->spt_hash, &page->hash_elem);
+		hash_insert(&dst->hash, &page->hash_elem);
 	}
 
 	return true;
@@ -262,5 +270,11 @@ supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	return;
 	}
 
-	hash_destroy(&spt->spt_hash, (hash_action_func *)page_destructor);
+	hash_destroy(&spt->hash, (hash_action_func *)page_destructor);
+}
+
+static void
+page_destructor (struct hash_elem *e, void *aux UNUSED) {
+	struct page *page = hash_entry(e, struct page, hash_elem);
+	vm_dealloc_page(page); 
 }

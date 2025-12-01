@@ -23,7 +23,7 @@
 #include "intrinsic.h"
 #ifdef VM
 #include "vm/vm.h"
-#include "synch.h"
+#include "threads/synch.h"
 #endif
 
 static void process_cleanup (void);
