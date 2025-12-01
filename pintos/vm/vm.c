@@ -270,7 +270,7 @@ page_destructor (struct hash_elem *e, void *aux UNUSED) {
 	vm_dealloc_page(page); 
 }
 
-unsigned page_hash_func(const struct hash_elem *e, void *aux){
+unsigned page_hash_func(const struct hash_elem *e, void *aux UNUSED){
 	const struct page *p = hash_entry(e, struct page, hash_elem);
 
 	// page의 va(가상 주소)를 해시값으로 변환
@@ -278,7 +278,7 @@ unsigned page_hash_func(const struct hash_elem *e, void *aux){
 
 }
 
-bool page_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux){
+bool page_less_func(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED){
 	struct page *ta = hash_entry(a, struct page, hash_elem);
 	struct page *tb = hash_entry(b, struct page, hash_elem);
 	return ta->va < tb->va;
