@@ -34,6 +34,8 @@ enum vm_type {
 struct page_operations;
 struct thread;
 
+struct list frame_list;
+
 #define VM_TYPE(type) ((type) & 7)
 
 /* The representation of "page".
@@ -47,7 +49,7 @@ struct page {
 
 	/* Your implementation */
 	struct hash_elem hash_elem;
-	
+
 	bool writable;
 
 	/* Per-type data are binded into the union.
@@ -66,6 +68,7 @@ struct page {
 struct frame {
 	void *kva;
 	struct page *page;
+	struct list_elem *frame_elem;
 };
 
 /* The function table for page operations.
