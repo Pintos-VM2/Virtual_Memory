@@ -33,3 +33,15 @@ pintos/userprog/.test_status
 pintos/userprog/.test_config
 .vscode/
 .gemini/GEMINI.md
+
+# other
+compile_commands.json
+.clangd
+.cache/
+.cursor/
+.cursorrules
+.cursorrules.md
+.cursorrules.txt
+.cursorrules.yml
+.cursorrules.yaml
+.cursorrules.yml
