@@ -36,3 +36,15 @@ pintos/vm/.test_status
 pintos/vm/.test_config
 .vscode/
 .gemini/GEMINI.md
+
+# other
+compile_commands.json
+.clangd
+.cache/
+.cursor/
+.cursorrules
+.cursorrules.md
+.cursorrules.txt
+.cursorrules.yml
+.cursorrules.yaml
+.cursorrules.yml
