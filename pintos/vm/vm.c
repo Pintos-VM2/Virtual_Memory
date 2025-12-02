@@ -73,14 +73,34 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 	ASSERT (VM_TYPE(type) != VM_UNINIT)
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
-
-	/* Check wheter the upage is already occupied or not. */
+	/* if(upage가 이미 할당 됐는지) 확인 */
 	if (spt_find_page (spt, upage) == NULL) {
-		/* TODO: Create the page, fetch the initialier according to the VM type,
-		 * TODO: and then create "uninit" page struct by calling uninit_new. You
-		 * TODO: should modify the field after calling the uninit_new. */
+		/* TODO: You should modify the field after calling the uninit_new. */
+		/* type 인자에 따라 initializer를 선택하고, 이를 인자로 uninit_new를 호출 */
+		struct page *page = malloc(sizeof(struct page));
+		if(page == NULL)
+			goto err;
 
-		/* TODO: Insert the page into the spt. */
+		switch(VM_TYPE(type)){
+			case VM_ANON:
+				uninit_new(page, upage, init, type, aux, anon_initializer);
+				break;
+
+			case VM_FILE:
+				uninit_new(page, upage, init, type, aux, file_backed_initializer);
+				break;
+
+			default:
+				PANIC(" DEBUG : vm_alloc_page_initializer undefine type error!!!!! ");
+		}
+		
+		page->writable = writable;
+		if(!spt_insert_page(spt, page)){
+			free(page);
+			goto err;
+		}
+
+		return true;
 	}
 err:
 	return false;
@@ -171,12 +191,21 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
-	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
-	struct page *page = NULL;
-	/* TODO: Validate the fault */
-	/* TODO: Your code goes here */
+vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
+
+	struct supplemental_page_table *spt = &thread_current ()->spt;
+
+	/* Validate the fault */
+	if(addr == NULL || is_kernel_vaddr(addr))
+		return false;
+
+	//0 이면 이상한 접근(1이면 물리 페이지 메핑X)
+	if(!not_present)
+		return false;
+
+	struct page *page = spt_find_page(spt, addr);
+	if(page == NULL)
+		return false;
 
 	return vm_do_claim_page (page);
 }
@@ -210,12 +239,12 @@ vm_do_claim_page (struct page *page) {
     frame->page = page;
     page->frame = frame;
 
-    /* 페이지 내용 채우기 (lazy load / swap-in) */
-    if (!swap_in(page, frame->kva))
-        goto error;
-
     /* VA → KVA 매핑 */
     if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable))
+        goto error;
+
+	/* 페이지 내용 채우기 (lazy load / swap-in) */
+    if (!swap_in(page, frame->kva))
         goto error;
 
     return true;
@@ -240,24 +269,55 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 
 /* Copy supplemental page table from src to dst */
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst ,
-	struct supplemental_page_table *src) {
+supplemental_page_table_copy (struct supplemental_page_table *dst , struct supplemental_page_table *src) {
+	
 	struct hash_iterator i;
 
 	if (src == NULL){
 		return false;
 	}
 
-	if (dst != NULL){
-		hash_init (&dst->hash, (hash_hash_func *)hash_page, (hash_less_func *)less_page, NULL);
-	}
-
 	hash_first(&i, &src->hash);
 
 	while (hash_next(&i) != NULL) {
 		struct hash_elem *e = hash_cur(&i);
-		struct page *page = hash_entry(e, struct page, hash_elem);
-		hash_insert(&dst->hash, &page->hash_elem);
+		struct page *p_page = hash_entry(e, struct page, hash_elem);
+
+		struct uninit_page p_uninit = p_page->uninit;
+		struct load_segment_arg *p_aux = p_uninit.aux;
+
+		/* ops->type 확인 */
+		switch(p_page->operations->type){
+			case VM_UNINIT:
+				struct load_segment_arg *c_aux = malloc(sizeof(struct load_segment_arg));
+				memcpy(c_aux, p_aux, sizeof(struct load_segment_arg));
+
+				if(!vm_alloc_page_with_initializer(p_uninit.type, p_page->va, p_page->writable, p_uninit.init, c_aux))
+					return false;
+				//claim 안함. 부모도 fault 대기중
+				break;
+
+			case VM_ANON:
+				if(!vm_alloc_page_with_initializer(VM_ANON, p_page->va, p_page->writable, NULL, NULL))
+					return false;
+				if(!vm_claim_page(p_page->va))
+					return false;
+				struct page *c_page = spt_find_page(&thread_current()->spt, p_page->va);
+				memcpy(c_page->frame->kva, p_page->frame->kva, PGSIZE);
+				break;
+
+			case VM_FILE:
+				if(!vm_alloc_page_with_initializer(VM_FILE, p_page->va, p_page->writable, NULL, NULL))
+					return false;
+				if(!vm_claim_page(p_page->va))
+					return false;
+				struct page *c_page_file = spt_find_page(&thread_current()->spt, p_page->va);
+				memcpy(c_page_file->frame->kva, p_page->frame->kva, PGSIZE);
+				break;
+
+			default:
+				return false;
+		}	
 	}
 
 	return true;

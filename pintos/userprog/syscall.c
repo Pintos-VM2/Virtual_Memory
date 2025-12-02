@@ -23,7 +23,7 @@ static int s_write (int fd, const void *buffer, unsigned length);
 static bool s_create(const char *file, unsigned initial_size);
 static void s_exit(int status);
 static int s_open(const char *file);
-static void check_valid_access(void *uaddr);
+//static void check_valid_access(void *uaddr);
 static void s_close(int fd);
 static int s_read(int fd, void *buffer, unsigned size);
 static int s_filesize(int fd);
@@ -37,6 +37,10 @@ static void s_seek(int fd, unsigned position);
 static bool s_remove(const char *file);
 static unsigned s_tell(int fd);
 static int s_dup2(int oldfd, int newfd);
+
+static void valid_get_addr(void *addr);
+static void valid_get_buffer(char *addr, unsigned length);
+static void valid_put_addr(char *addr, unsigned length);
 
 /* System call.
  *
@@ -52,6 +56,38 @@ static int s_dup2(int oldfd, int newfd);
 #define MSR_SYSCALL_MASK 0xc0000084 /* Mask for the eflags */
 
 struct lock filesys_lock;
+
+
+static int64_t
+get_user (const uint8_t *uaddr) {
+    int64_t result;
+
+    if (uaddr == NULL || !is_user_vaddr (uaddr))
+        return -1;
+
+    __asm __volatile (
+        "movabsq $done_get, %0\n"
+        "movzbq %1, %0\n"
+        "done_get:\n"
+        : "=&a" (result) : "m" (*uaddr));
+    return result;
+}
+
+static bool
+put_user (uint8_t *udst, uint8_t byte) {
+    int64_t error_code;
+
+    if (udst == NULL || !is_user_vaddr (udst))
+        return false;
+
+    __asm __volatile (
+        "movabsq $done_put, %0\n"
+        "movb %b2, %1\n"
+        "done_put:\n"
+        : "=&a" (error_code), "=m" (*udst) : "q" (byte));
+    return error_code != -1;
+}
+
 
 void
 syscall_init (void) {
@@ -140,6 +176,29 @@ syscall_handler (struct intr_frame *f) {
 	}
 }
 
+
+/* user 포인터 검사 */
+static void valid_get_addr(void *addr){
+	if(get_user(addr) < 0)
+		sys_exit(-1);
+}
+/* 버퍼에서 가져오기 검사 */
+static void valid_get_buffer(char *buffer, unsigned length){
+
+	char *end = buffer + length -1;
+	if(get_user(buffer) < 0 || get_user(end) < 0)
+			sys_exit(-1);
+}
+/* 버퍼에 쓰기 검사 */
+static void valid_put_buffer(char *buffer, unsigned length){
+
+	char *end = buffer + length -1;
+	if(put_user(buffer, 0) == 0 || put_user(end, 0) == 0)
+		sys_exit(-1);
+}
+
+
+
 static void 
 s_halt(void){
 	power_off();
@@ -189,7 +248,7 @@ s_write (int fd, const void *buffer, unsigned length){
 
 static bool 
 s_create(const char *file, unsigned initial_size){
-	check_valid_access(file);
+	valid_get_addr(file);
 	if(strlen(file) > 14){
 		return false;
 	}
@@ -251,17 +310,6 @@ s_open(const char *file){
 	}
 
 	return fd;
-}
-
-/* TODO : 현재 로직은 시작 주소만 검증하기 때문에, 만약 시작 주소 + 오프셋과 같은 읽기 쓰기에서 주소 침범 문제 발생 가능	
-하단의 get_user, put_user로 로직 대체가 필요할 수 있으나, 현재까지 테스트 케이스에서 문제가 되지는 않음.
-*/
-static void 
-check_valid_access(void *uaddr){
-	struct thread *cur = thread_current();
-	if(uaddr == NULL) s_exit(-1);
-	if(!is_user_vaddr(uaddr)) s_exit(-1);
-	if(pml4_get_page(cur -> pml4, uaddr) == NULL) s_exit(-1);
 }
 
 static void 
@@ -342,7 +390,7 @@ s_read(int fd, void *buffer, unsigned size){
 
 static int 
 s_exec(const char *cmd_line){
-	check_valid_access(cmd_line);
+	valid_get_addr(cmd_line);
 	char *cm_copy = palloc_get_page(PAL_ZERO);
 	if(cm_copy == NULL) return -1;
 	strlcpy(cm_copy, cmd_line, PGSIZE);
@@ -357,7 +405,7 @@ s_wait(tid_t pid){
 
 static tid_t 
 s_fork(const char *thread_name, struct intr_frame *f){
-	check_valid_access(thread_name);
+	valid_get_addr(thread_name);
 	return process_fork(thread_name, f);
 }
 
@@ -410,7 +458,7 @@ s_dup2(int oldfd, int newfd){
 
 /* file을 받으면 wrapper 구조체인 file_descriptor를 반환하는 함수 */
 struct file_descriptor *create_fd_wrapper(struct file *f, enum fd_type f_type){
-	if(f == NULL) return NULL;
+	//if(f == NULL) return NULL;
 	struct file_descriptor *wrap_fd = (struct file_descriptor *)malloc(sizeof(struct file_descriptor));
 	if(wrap_fd == NULL) return NULL;
 	wrap_fd -> file = f;
