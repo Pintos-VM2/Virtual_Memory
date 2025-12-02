@@ -973,13 +973,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 	return true;
 }
 
-
-bool stack_init (struct page *page, void *aux){
-	/* 일단 zero-fill 정도 */
-	memset(page->frame->kva, 0, PGSIZE);
-	return true;
-}
-
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
 static bool
 setup_stack (struct intr_frame *if_) {

@@ -106,6 +106,11 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f) {
+
+	//user->kernel 이면, user_rsp 저장
+	if(f->cs == SEL_UCSEG)
+		thread_current()->user_rsp = f->rsp; 
+
 	uint64_t syscall_num = f -> R.rax;
 	switch (syscall_num)
 	{	
@@ -170,7 +175,7 @@ syscall_handler (struct intr_frame *f) {
 			break;
 
 		default:
-			printf("undefined system call! %llu", syscall_num); 
+			printf("undefined system call! %llu\n", syscall_num); 
 			s_exit(-1);
 			break;
 	}

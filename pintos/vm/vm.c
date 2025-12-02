@@ -94,7 +94,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		}
 		/* uninit_new 호출 후 나머지 field 채우기 */
 		page->writable = writable;
-		
+
 		if(!spt_insert_page(spt, page)){
 			free(page);
 			goto err;
@@ -160,7 +160,7 @@ vm_evict_frame (void) {
  * space.*/
 static struct frame *
 vm_get_frame (void) {
-	/* TODO: Fill this function. */
+
 	void *kpage = palloc_get_page(PAL_USER);
 	if (kpage == NULL)
 		PANIC("to do");
@@ -179,9 +179,25 @@ vm_get_frame (void) {
 	return f;
 }
 
+bool stack_init (struct page *page, void *aux){
+	/* 일단 zero-fill 정도 */
+	memset(page->frame->kva, 0, PGSIZE);
+	return true;
+}
+
 /* Growing the stack. */
-static void
+/* caller가 claim 함 */
+static bool
 vm_stack_growth (void *addr UNUSED) {
+
+	void *va = pg_round_down(addr);
+	/* stack 크기 제한 초과 */
+	if(va < MIN_USER_STACK) return false;
+
+	if(!vm_alloc_page_with_initializer(VM_ANON | IS_STACK, va, true, stack_init, NULL))
+		return false;
+
+	return true;
 }
 
 /* Handle the fault on write_protected page */
@@ -193,15 +209,20 @@ vm_handle_wp (struct page *page UNUSED) {
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
 
-	struct supplemental_page_table *spt = &thread_current ()->spt;
+	struct thread *curr = thread_current();
+	struct supplemental_page_table *spt = &curr->spt;
 
 	/* Validate the fault */
 	if(addr == NULL || is_kernel_vaddr(addr))
-		return false;
+		return false;	
 
 	//0 이면 이상한 접근(1이면 물리 페이지 메핑X)
 	if(!not_present)
 		return false;
+
+	if(addr >= (curr->user_rsp - 8))
+		if(!vm_stack_growth(addr))
+			return false;
 
 	struct page *page = spt_find_page(spt, addr);
 	if(page == NULL)
@@ -298,7 +319,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst , struct suppl
 
 			case VM_ANON:
 			case VM_FILE:
-				if(!vm_alloc_page_with_initializer(p_page->operations->type, p_page->va, p_page->writable, NULL, NULL))
+				if(!vm_alloc_page(p_page->operations->type, p_page->va, p_page->writable))
 					return false;
 				if(!vm_claim_page(p_page->va))
 					return false;
@@ -310,7 +331,6 @@ supplemental_page_table_copy (struct supplemental_page_table *dst , struct suppl
 				return false;
 		}	
 	}
-
 	return true;
 }
 

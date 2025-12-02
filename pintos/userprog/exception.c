@@ -140,6 +140,10 @@ page_fault (struct intr_frame *f) {
 	write = (f->error_code & PF_W) != 0;
 	user = (f->error_code & PF_U) != 0;
 
+	//user->kernel 이면, user_rsp 저장
+	if(user)
+		thread_current()->user_rsp = f->rsp;
+
 #ifdef VM
 	/* For project 3 and later. */
 	if (vm_try_handle_fault (f, fault_addr, user, write, not_present))
