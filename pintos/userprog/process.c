@@ -917,7 +917,7 @@ lazy_load_segment (struct page *page, void *aux) {
 	
 	memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-	free(arg); //추후 안쓰기 때문에 여기서 free, 문제 되면 process_exit 고려
+	free(arg); //추후 안쓰기 때문에 여기서 free, 문제 되면 exit과정에서 고려
 
 	return true;
 }

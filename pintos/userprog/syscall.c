@@ -180,24 +180,22 @@ syscall_handler (struct intr_frame *f) {
 /* user 포인터 검사 */
 static void valid_get_addr(void *addr){
 	if(get_user(addr) < 0)
-		sys_exit(-1);
+		s_exit(-1);
 }
 /* 버퍼에서 가져오기 검사 */
 static void valid_get_buffer(char *buffer, unsigned length){
 
 	char *end = buffer + length -1;
 	if(get_user(buffer) < 0 || get_user(end) < 0)
-			sys_exit(-1);
+		s_exit(-1);
 }
 /* 버퍼에 쓰기 검사 */
 static void valid_put_buffer(char *buffer, unsigned length){
 
 	char *end = buffer + length -1;
 	if(put_user(buffer, 0) == 0 || put_user(end, 0) == 0)
-		sys_exit(-1);
+		s_exit(-1);
 }
-
-
 
 static void 
 s_halt(void){
@@ -211,10 +209,9 @@ s_exit(int status){
     thread_exit();
 }
 
-
 static int 
 s_write (int fd, const void *buffer, unsigned length){
-	check_valid_access(buffer);
+	valid_get_buffer(buffer, length);
 	struct file_descriptor *wrap_fd = get_fd_wrapper(fd);
 	struct file *cur_file = NULL;
 	int actual_byte_written = 0;
@@ -265,7 +262,7 @@ s_create(const char *file, unsigned initial_size){
 /* 파일 식별자로 변환하고 식별자 번호를 리턴한다. */
 static int
 s_open(const char *file){
-	check_valid_access(file);
+	valid_get_addr(file);
 	struct thread *cur = thread_current();
 
 	char *fn_copy = palloc_get_page(0);
@@ -347,7 +344,11 @@ s_filesize(int fd){
 
 static int 
 s_read(int fd, void *buffer, unsigned size){
-	check_valid_access(buffer);
+
+	if(size == 0)
+		return 0;
+
+	valid_put_buffer(buffer, size);
 	struct file_descriptor *wrap_fd = get_fd_wrapper(fd);
 	int bytes_rd = -1;
 
@@ -421,7 +422,7 @@ s_seek(int fd, unsigned position){
 static bool 
 s_remove(const char *file){
 	bool result = false;
-	check_valid_access(file);
+	valid_get_addr(file);
 	lock_acquire(&filesys_lock);
 	result = filesys_remove(file);
 	lock_release(&filesys_lock);

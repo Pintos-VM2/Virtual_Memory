@@ -51,4 +51,5 @@ anon_swap_out (struct page *page) {
 static void
 anon_destroy (struct page *page) {
 	struct anon_page *anon_page = &page->anon;
+	/* anon_page 구조체 만들어지면 free 추가*/
 }

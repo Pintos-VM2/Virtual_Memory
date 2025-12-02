@@ -75,7 +75,6 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 	/* if(upage가 이미 할당 됐는지) 확인 */
 	if (spt_find_page (spt, upage) == NULL) {
-		/* TODO: You should modify the field after calling the uninit_new. */
 		/* type 인자에 따라 initializer를 선택하고, 이를 인자로 uninit_new를 호출 */
 		struct page *page = malloc(sizeof(struct page));
 		if(page == NULL)
@@ -93,8 +92,9 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 			default:
 				PANIC(" DEBUG : vm_alloc_page_initializer undefine type error!!!!! ");
 		}
-		
+		/* uninit_new 호출 후 나머지 field 채우기 */
 		page->writable = writable;
+		
 		if(!spt_insert_page(spt, page)){
 			free(page);
 			goto err;
@@ -273,9 +273,8 @@ supplemental_page_table_copy (struct supplemental_page_table *dst , struct suppl
 	
 	struct hash_iterator i;
 
-	if (src == NULL){
+	if (src == NULL)
 		return false;
-	}
 
 	hash_first(&i, &src->hash);
 
@@ -298,21 +297,13 @@ supplemental_page_table_copy (struct supplemental_page_table *dst , struct suppl
 				break;
 
 			case VM_ANON:
-				if(!vm_alloc_page_with_initializer(VM_ANON, p_page->va, p_page->writable, NULL, NULL))
+			case VM_FILE:
+				if(!vm_alloc_page_with_initializer(p_page->operations->type, p_page->va, p_page->writable, NULL, NULL))
 					return false;
 				if(!vm_claim_page(p_page->va))
 					return false;
 				struct page *c_page = spt_find_page(&thread_current()->spt, p_page->va);
 				memcpy(c_page->frame->kva, p_page->frame->kva, PGSIZE);
-				break;
-
-			case VM_FILE:
-				if(!vm_alloc_page_with_initializer(VM_FILE, p_page->va, p_page->writable, NULL, NULL))
-					return false;
-				if(!vm_claim_page(p_page->va))
-					return false;
-				struct page *c_page_file = spt_find_page(&thread_current()->spt, p_page->va);
-				memcpy(c_page_file->frame->kva, p_page->frame->kva, PGSIZE);
 				break;
 
 			default:
@@ -326,10 +317,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst , struct suppl
 /* Free the resource hold by the supplemental page table */
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt) {
-	if (spt == NULL){
-	return;
-	}
-
+	if (spt == NULL) return;
 	hash_destroy(&spt->hash, (hash_action_func *)page_destructor);
 }
 
