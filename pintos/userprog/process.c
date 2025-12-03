@@ -49,7 +49,7 @@ void *duplicate_lazy_load_aux(void *aux) {
     if (dst == NULL)
         return NULL;
     
-    dst->file = src->file;
+    dst->file = file_reopen(src->file);
     if (dst->file == NULL) {
         free(dst);
         return NULL;
@@ -934,6 +934,8 @@ lazy_load_segment (struct page *page, void *aux) {
 	}
 
 	memset(page->frame->kva + page_read_bytes, 0, args->page_zero_bytes);
+
+	free(args);
 
 	return true;
 }
