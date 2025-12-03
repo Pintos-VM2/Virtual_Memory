@@ -69,7 +69,7 @@ struct page {
 struct frame {
 	void *kva;
 	struct page *page;
-	struct list_elem *frame_elem;
+	struct list_elem frame_elem;
 };
 
 /* The function table for page operations.
@@ -105,8 +105,7 @@ struct load_segment_arg {
 
 #include "threads/thread.h"
 void supplemental_page_table_init (struct supplemental_page_table *spt);
-bool supplemental_page_table_copy (struct supplemental_page_table *dst,
-		struct supplemental_page_table *src);
+bool supplemental_page_table_copy (struct thread *child , struct thread *parent); 
 void supplemental_page_table_kill (struct supplemental_page_table *spt);
 struct page *spt_find_page (struct supplemental_page_table *spt,
 		void *va);
@@ -124,5 +123,7 @@ bool vm_alloc_page_with_initializer (enum vm_type type, void *upage,
 void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
+
+bool stack_init (struct page *page, void *aux);
 
 #endif  /* VM_VM_H */

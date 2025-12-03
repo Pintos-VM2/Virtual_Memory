@@ -179,6 +179,12 @@ vm_get_frame (void) {
 	return f;
 }
 
+bool stack_init (struct page *page, void *aux){
+	/* 일단 zero-fill 정도 */
+	memset(page->frame->kva, 0, PGSIZE);
+	return true;
+}
+
 /* Growing the stack. */
 static void
 vm_stack_growth (void *addr UNUSED) {
@@ -269,14 +275,22 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 
 /* Copy supplemental page table from src to dst */
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst , struct supplemental_page_table *src) {
+supplemental_page_table_copy (struct thread *child , struct thread *parent) {
 	
+	struct supplemental_page_table *dst = &child->spt;
+	struct supplemental_page_table *src = &parent->spt;
+
 	struct hash_iterator i;
 
 	if (src == NULL)
 		return false;
 
 	hash_first(&i, &src->hash);
+
+	struct thread *dup_file = file_duplicate(parent->execute_file);
+	if(dup_file == NULL)
+		return false;
+	child->execute_file = dup_file;
 
 	while (hash_next(&i) != NULL) {
 		struct hash_elem *e = hash_cur(&i);
@@ -290,6 +304,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst , struct suppl
 			case VM_UNINIT:
 				struct load_segment_arg *c_aux = malloc(sizeof(struct load_segment_arg));
 				memcpy(c_aux, p_aux, sizeof(struct load_segment_arg));
+				c_aux->file = dup_file;
 
 				if(!vm_alloc_page_with_initializer(p_uninit.type, p_page->va, p_page->writable, p_uninit.init, c_aux))
 					return false;
@@ -298,7 +313,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst , struct suppl
 
 			case VM_ANON:
 			case VM_FILE:
-				if(!vm_alloc_page_with_initializer(p_page->operations->type, p_page->va, p_page->writable, NULL, NULL))
+				if(!vm_alloc_page(p_page->operations->type, p_page->va, p_page->writable))
 					return false;
 				if(!vm_claim_page(p_page->va))
 					return false;

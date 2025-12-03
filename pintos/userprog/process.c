@@ -276,7 +276,7 @@ __do_fork (void *aux) {
 	process_activate (current);
 #ifdef VM
 	supplemental_page_table_init (&current->spt);
-	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
+	if (!supplemental_page_table_copy (current, parent))
 		goto error;
 #else
 	if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
@@ -970,13 +970,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
 	}
-	return true;
-}
-
-
-bool stack_init (struct page *page, void *aux){
-	/* 일단 zero-fill 정도 */
-	memset(page->frame->kva, 0, PGSIZE);
 	return true;
 }
 
