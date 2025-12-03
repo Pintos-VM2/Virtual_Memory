@@ -95,7 +95,7 @@ struct supplemental_page_table {
 	struct hash hash;
 };
 
-struct load_segment_arg {
+struct file_load_arg {
 	size_t page_read_bytes;
 	size_t page_zero_bytes;
 	struct file *file;

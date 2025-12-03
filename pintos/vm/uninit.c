@@ -63,5 +63,6 @@ uninit_initialize (struct page *page, void *kva) {
 static void
 uninit_destroy (struct page *page) {
 	struct uninit_page *uninit = &page->uninit;
-	free(uninit->aux); //uninit이면 aux free 안됨
+	if(uninit->aux)
+		free(uninit->aux); //uninit이면 aux free 안됨
 }

@@ -179,7 +179,8 @@ vm_get_frame (void) {
 	return f;
 }
 
-bool stack_init (struct page *page, void *aux){
+bool 
+stack_init (struct page *page, void *aux){
 	/* 일단 zero-fill 정도 */
 	memset(page->frame->kva, 0, PGSIZE);
 	return true;
@@ -308,7 +309,7 @@ supplemental_page_table_copy (struct thread *child , struct thread *parent) {
 
 	hash_first(&i, &src->hash);
 
-	struct thread *dup_file = file_duplicate(parent->execute_file);
+	struct file *dup_file = file_duplicate(parent->execute_file);
 	if(dup_file == NULL)
 		return false;
 	child->execute_file = dup_file;
@@ -318,14 +319,19 @@ supplemental_page_table_copy (struct thread *child , struct thread *parent) {
 		struct page *p_page = hash_entry(e, struct page, hash_elem);
 
 		struct uninit_page p_uninit = p_page->uninit;
-		struct load_segment_arg *p_aux = p_uninit.aux;
+		struct file_load_arg *p_aux = p_uninit.aux;
+		enum vm_type type = page_get_type(p_page);
 
 		/* ops->type 확인 */
 		switch(p_page->operations->type){
 			case VM_UNINIT:
-				struct load_segment_arg *c_aux = malloc(sizeof(struct load_segment_arg));
-				memcpy(c_aux, p_aux, sizeof(struct load_segment_arg));
-				c_aux->file = dup_file;
+				struct file_load_arg *c_aux = malloc(sizeof(struct file_load_arg));
+				memcpy(c_aux, p_aux, sizeof(struct file_load_arg));
+
+				if(type == VM_ANON)
+					c_aux->file = dup_file;
+				else if(type == VM_FILE)
+					c_aux->file = file_reopen(p_aux->file);
 
 				if(!vm_alloc_page_with_initializer(p_uninit.type, p_page->va, p_page->writable, p_uninit.init, c_aux))
 					return false;

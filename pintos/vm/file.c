@@ -2,10 +2,13 @@
 
 #include "vm/vm.h"
 #include "threads/vaddr.h"
+#include "threads/mmu.h"
 
 static bool file_backed_swap_in (struct page *page, void *kva);
 static bool file_backed_swap_out (struct page *page);
 static void file_backed_destroy (struct page *page);
+
+static bool file_init(struct page *page, void *aux);
 
 /* DO NOT MODIFY this struct */
 static const struct page_operations file_ops = {
@@ -15,40 +18,47 @@ static const struct page_operations file_ops = {
 	.type = VM_FILE,
 };
 
-struct file_init_arg {
-	size_t remain_byte;
-	struct file *file; 
-	off_t offset;
-};
+// struct file_init_arg {
+// 	struct file *file; 
+// 	off_t offset;
+// 	size_t page_read_bytes;
+// 	size_t page_zero_bytes;
+// };
 
 /* The initializer of file vm */
-/* 마지막 페이지 남는 공간은 0으로 채우고, 나중에 file-back할 때 해당 공간은 file에 넣으면 안된다 */
 void
 vm_file_init(void) {
 }
 
+/* 마지막 페이지 남는 공간은 0으로 채우고, 나중에 file-back할 때 해당 공간은 file에 넣으면 안된다 */
 static bool
 file_init(struct page *page, void *aux){
 
-	// struct file_init_arg *arg = aux;
-	// size_t remain_byte = arg->remain_byte;
-	// struct file *file = arg->file;
-	// off_t offset = arg->offset;
+	struct file_load_arg *arg = aux;
+	struct file *file = arg->file;
+	off_t ofs = arg->ofs;
+	size_t page_read_bytes = arg->page_read_bytes;
+	size_t page_zero_bytes = arg->page_zero_bytes;
 
-	// if(remain_byte){
+	/* 할당받은 페이지에 파일 내용을 읽어 채운다. */
+	void *kpage = page->frame->kva;
+	if (file_read_at (file, kpage, page_read_bytes, ofs) != (int) page_read_bytes)
+		// 실패시 free 처리 추가?
+		return false;
+	
+	memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-	// 	//if (file_read_at (file, kpage, page_read_bytes, ofs) != (int) page_read_bytes)
-		
-	// }
-	// else{
+	//file_page 구조체 데이터 저장
+	if(page_zero_bytes)
+		page->file.is_last = true;
+	page->file.page_read_bytes = page_read_bytes;
+	page->file.file = file;
+	page->file.ofs = ofs;
 
-	// 	if(file_read_at (file, page->frame->kva, PGSIZE, offset) != (int) PGSIZE)
-	// 		// 실패시 free 처리 추가?
-	// 		return false;
-	// }
+	free(arg);
 
 	return true;
-} 
+}
 
 
 /* Initialize the file backed page */
@@ -76,29 +86,65 @@ file_backed_swap_out (struct page *page) {
 static void
 file_backed_destroy (struct page *page) {
 	struct file_page *file_page UNUSED = &page->file;
+
+	/* page 구조체 내부 정리 */
 }
 
 /* Do the mmap */
 void*
 do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offset) {
 
+	/* 검증은 s_mmap(호출자)에서 함 */
 	/* file의 offset 부터 length byte를 addr에 매핑한다 */
-	/* 마지막 페이지 남는 공간은 0으로 채우고, 나중에 file-back할 때 해당 공간은 file에 넣으면 안된다 */
-
-	struct file_init_arg *arg = malloc(sizeof(struct file_init_arg));
-	arg->file = file;
 
 	int rp_max = length / PGSIZE;
 	for(int i = 0; i <= rp_max; i++){
-		arg->offset = offset+(i*PGSIZE);
-		arg->remain_byte = length - (i*PGSIZE) > PGSIZE ? 0 : length - (i*PGSIZE);
-		if(!vm_alloc_page_with_initializer(VM_FILE, addr+(i*PGSIZE), writable, file_init, arg))
+
+		size_t page_read_bytes = length - (i*PGSIZE) > PGSIZE ? PGSIZE : length - (i*PGSIZE);
+		size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+		struct file_load_arg *arg = malloc(sizeof(struct file_load_arg));
+		if(arg == NULL) return false;
+		arg->ofs = offset+(i*PGSIZE);
+		arg->page_read_bytes = page_read_bytes;
+		arg->page_zero_bytes = page_zero_bytes;
+		arg->file = file_reopen(file);
+
+		if(!vm_alloc_page_with_initializer(VM_FILE, addr+(i*PGSIZE), writable, file_init, arg)){
+			free(arg);
 			return false;
+		}
 	}
-	return true;
+	return addr;
 }
 
 /* Do the munmap */
 void
 do_munmap (void *addr) {
+
+	struct thread *curr = thread_current();
+
+	while(true){
+
+		struct page *page = spt_find_page(&curr->spt, addr);
+		if(pml4_is_dirty(curr->pml4, addr))
+			write_back(page);
+
+		pml4_clear_page(&curr->spt, addr);
+		palloc_free_page(page->frame->kva);
+
+		spt_remove_page(&curr->spt, page);
+
+		if(page->file.is_last)
+			break;
+
+		addr += PGSIZE;
+	}
+}
+
+bool
+write_back(struct page *page){
+
+
+
 }

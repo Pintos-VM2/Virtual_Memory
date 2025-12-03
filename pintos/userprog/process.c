@@ -903,7 +903,7 @@ install_page (void *upage, void *kpage, bool writable) {
 static bool
 lazy_load_segment (struct page *page, void *aux) {
 
-	struct load_segment_arg *arg = aux;
+	struct file_load_arg *arg = aux;
 	struct file *file = arg->file;
 	off_t ofs = arg->ofs;
 	size_t page_read_bytes = arg->page_read_bytes;
@@ -912,8 +912,7 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* 할당받은 페이지에 파일 내용을 읽어 채운다. */
 	void *kpage = page->frame->kva;
 	if (file_read_at (file, kpage, page_read_bytes, ofs) != (int) page_read_bytes)
-		// 실패시 free 처리 추가?
-		return false;
+		return false; // 실패시 free 처리 추가?
 	
 	memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
@@ -952,7 +951,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* arg 세팅 */
-		struct load_segment_arg *arg = malloc(sizeof(struct load_segment_arg));
+		struct file_load_arg *arg = malloc(sizeof(struct file_load_arg));
 		if(arg == NULL)	return false;
 		arg->file = file;
 		arg->ofs = ofs;
