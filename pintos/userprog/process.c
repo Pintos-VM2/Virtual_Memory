@@ -43,13 +43,13 @@ void *duplicate_lazy_load_aux(void *aux) {
     if (aux == NULL)
         return NULL;
     
-    struct load_aux *src = aux;
+    struct load_aux *src = (struct load_aux *)aux;
     struct load_aux *dst = malloc(sizeof *dst);
     
     if (dst == NULL)
         return NULL;
     
-    dst->file = file_reopen(src->file);
+    dst->file = src->file;
     if (dst->file == NULL) {
         free(dst);
         return NULL;
@@ -206,9 +206,8 @@ process_fork (const char *name, struct intr_frame *if_) {
 	struct thread *parent_thread = thread_current();
 	parent_thread -> pf = if_;
 	struct child_status *cs = init_child(parent_thread);
-	if(cs == NULL){
+	if(cs == NULL)
 		return TID_ERROR;
-	}
 
 	tid_t child_id = thread_create (name, PRI_DEFAULT, __do_fork, cs);
 	if(child_id == TID_ERROR){
@@ -922,6 +921,8 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	struct load_aux *args = (struct load_aux *)aux;
 
+	void *kpage = page->frame->kva;
+
 	struct file *f = args->file;
 	off_t ofs = args->ofs;
 	size_t page_read_bytes = args->page_read_bytes;
@@ -929,7 +930,6 @@ lazy_load_segment (struct page *page, void *aux) {
 	file_seek(f, ofs);
 
 	if (file_read(f, page->frame->kva, page_read_bytes) != page_read_bytes) {
-		palloc_free_page(page->frame->kva);
 		return false;
 	}
 
@@ -977,7 +977,10 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		aux->page_zero_bytes = page_zero_bytes;
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
 					writable, lazy_load_segment, (void *)aux))
+		{
+			free(aux);
 			return false;
+		}
 
 		/* Advance. */
 		read_bytes -= page_read_bytes;
@@ -1001,6 +1004,10 @@ setup_stack (struct intr_frame *if_) {
 		success = vm_claim_page(stack_bottom);
 		if (success)
 			if_->rsp = USER_STACK;
+		else {
+			vm_dealloc_page(stack_bottom); 
+			return false;  
+		}
 	}
 	/* TODO: Your code goes here */
 

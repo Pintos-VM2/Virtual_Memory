@@ -82,6 +82,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		return false;
 	
 	p = (struct page *)malloc(sizeof *p);
+
 	if (p == NULL)
 		goto err;
 
@@ -94,20 +95,21 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 			initializer = file_backed_initializer;
 			break;
 		default:
+			free(p);
 			goto err;
 	}
 
 	uninit_new(p, upage, init, type, aux, initializer);
 	p->writable = writable;
 
-	if (!spt_insert_page(spt, p))
+	if (!spt_insert_page(spt, p)) {
+		free(p);
 		goto err;
+	}
 
 	return true;
-err:
-	if (p != NULL)
-		free(p);
 	
+err:
 	return false;
 }
 
@@ -196,7 +198,7 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
+vm_try_handle_fault (struct intr_frame *f, void *addr,
 		bool user UNUSED, bool write, bool not_present) {
 	if (addr == NULL)
 		return false;
@@ -212,8 +214,6 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
 		
 		if (page == NULL)
 			return false;
-		if (write && !page->writable)
-		 	return false;
 
 		return vm_do_claim_page (page);
 	}
@@ -286,25 +286,17 @@ supplemental_page_table_copy (struct supplemental_page_table *dst ,
 		hash_first(&i, &src->hash);
 		while(hash_next(&i))
 		{
-			
 			struct page *src_page = hash_entry(hash_cur(&i), struct page, hash_elem);
 	
 			enum vm_type type = page_get_type(src_page);
 			void *upage = src_page->va;
 			bool writable = src_page->writable;
 
-			if (type == VM_UNINIT) {
-				enum vm_type real_type = VM_TYPE(src_page->uninit.type);
+			if (src_page->operations->type == VM_UNINIT) {
 				vm_initializer *init = src_page->uninit.init;
-				void* aux = src_page->uninit.aux;
-				if (real_type == VM_FILE) {
-					aux = duplicate_lazy_load_aux(src_page->uninit.aux);
-					if (aux == NULL)
-						return false;
-				}
-				else {
-					vm_alloc_page_with_initializer(real_type, upage, writable, init, aux);
-				}
+				void *aux = duplicate_lazy_load_aux(src_page->uninit.aux);
+				if (!vm_alloc_page_with_initializer(type, upage, writable, init, aux))
+					return false;
 			}
 			else {
 				if (!vm_alloc_page(type, upage, writable))
@@ -321,6 +313,39 @@ supplemental_page_table_copy (struct supplemental_page_table *dst ,
 			}
 		}
 	return true;
+
+
+	// struct hash *src_hash = &src->hash;
+    // struct hash *dst_hash = &dst->hash;
+    // struct hash_iterator i;
+
+    // hash_first(&i, src_hash);
+    // while (hash_next(&i))
+    // {
+    //     struct page *p = hash_entry(hash_cur(&i), struct page, hash_elem);
+    //     if (p == NULL)
+    //         return false;
+    //     enum vm_type type = page_get_type(p);
+    //     struct page *child;
+
+    //     if (p->operations->type == VM_UNINIT)
+    //     {
+    //         if (!vm_alloc_page_with_initializer(type, p->va, p->writable, p->uninit.init, p->uninit.aux))
+    //             return false;
+    //     }
+    //     else
+    //     {
+    //         if (!vm_alloc_page(type, p->va, p->writable))
+    //             return false;
+    //         if (!vm_claim_page(p->va))
+    //             return false;
+
+    //         child = spt_find_page(dst, p->va);
+    //         memcpy(child->frame->kva, p->frame->kva, PGSIZE);
+    //     }
+    // }
+
+    // return true;
 }
 
 /* Free the resource hold by the supplemental page table */

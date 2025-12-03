@@ -27,8 +27,9 @@ vm_anon_init (void) {
 bool
 anon_initializer (struct page *page, enum vm_type type, void *kva) {
 	/* Set up the handler */
-	/* 지금 건들 수 있는게 없는데? */
 	struct anon_page *anon = &page->anon;
+	page->operations = &anon_ops;
+
 	return true;
 }
 

@@ -34,6 +34,7 @@ enum vm_type {
 #include "filesys/page_cache.h"
 #endif
 
+
 struct page_operations;
 struct thread;
 
@@ -82,7 +83,6 @@ struct page_operations {
 	bool (*swap_in) (struct page *, void *);
 	bool (*swap_out) (struct page *);
 	void (*destroy) (struct page *);
-	void *(*duplicate_aux)(void *aux);
 	enum vm_type type;
 };
 
