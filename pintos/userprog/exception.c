@@ -155,6 +155,12 @@ page_fault (struct intr_frame *f) {
 	  	return;
 	}
 
+	if (fault_addr < KERN_BASE){
+		f->rip = f->R.rax;     
+    	f->R.rax = -1;   
+		return;
+	}
+
 	/* If the fault is true fault, show info and exit. */
 	printf ("Page fault at %p: %s error %s page in %s context.\n",
 			fault_addr,
@@ -163,4 +169,3 @@ page_fault (struct intr_frame *f) {
 			user ? "user" : "kernel");
 	kill (f);
 }
-

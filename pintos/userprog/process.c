@@ -54,13 +54,13 @@ process_init (void) {
 		current -> fd_table[i] = NULL;
 	}
 
-	struct file_descriptor *fd_0 = create_fd_wrapper((struct file *) 1, FD_STDIN);
+	struct file_descriptor *fd_0 = create_fd_wrapper((struct file *) NULL, FD_STDIN);
 	if(fd_0 == NULL) {
 		free(current -> fd_table);
 		return;
 	}
 
-	struct file_descriptor *fd_1 = create_fd_wrapper((struct file *) 2, FD_STDOUT);
+	struct file_descriptor *fd_1 = create_fd_wrapper((struct file *) NULL, FD_STDOUT);
 	if(fd_1 == NULL) {
 		free(current -> fd_table);
 		free(fd_0);
@@ -144,17 +144,22 @@ process_create_initd (const char *file_name) {
 
 /* A thread function that launches first user process. */
 static void
-initd (void *f_name) {
+initd (void *aux) {
 #ifdef VM
-	supplemental_page_table_init (&thread_current ()->spt);
+	//supplemental_page_table_init (&thread_current ()->spt);
 #endif
-	struct initd_fn *init_fn = (struct initd_fn *) f_name; 
-	process_init ();
 	struct thread *cur = thread_current();
-	cur -> child_stat = init_fn -> cs;
-	int result = process_exec (init_fn -> file_name);
-	free(f_name);
-	if (result < 0)
+	struct initd_fn *init_fn = (struct initd_fn *) aux;
+
+	char *file_name = init_fn->file_name;
+	struct child_status *child_status = init_fn -> cs;
+	free(init_fn);
+
+	cur -> child_stat = child_status;
+
+	process_init ();
+
+	if (process_exec (file_name) < 0);
 		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();
 }
@@ -271,7 +276,7 @@ __do_fork (void *aux) {
 	process_activate (current);
 #ifdef VM
 	supplemental_page_table_init (&current->spt);
-	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
+	if (!supplemental_page_table_copy (current, parent))
 		goto error;
 #else
 	if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
@@ -295,12 +300,14 @@ __do_fork (void *aux) {
 
 		/* 부모 테이블에서 복사 관계가 확인되면 자식도 그 관계대로 복사*/
 		bool found = false;
-		for(int j = 0; j < i; j++){
-			if(parent_fd_info == parent -> fd_table[j]){
-				current -> fd_table[i] = current -> fd_table[j];					
-				current -> fd_table[i] -> ref_count++;
-				found = true;
-				break;
+		if(parent_fd_info->ref_count >= 2){
+			for(int j = 0; j < i; j++){
+				if(parent_fd_info == parent -> fd_table[j]){
+					current -> fd_table[i] = current -> fd_table[j];					
+					current -> fd_table[i] -> ref_count++;
+					found = true;
+					break;
+				}
 			}
 		}
 		if(found) continue;
@@ -365,6 +372,8 @@ process_exec (void *f_name) {
 
 	/* We first kill the current context */
 	process_cleanup ();
+
+	supplemental_page_table_init (&thread_current ()->spt);
 
 	/* And then load the binary */
 	success = load (file_name, &_if);
@@ -886,15 +895,31 @@ install_page (void *upage, void *kpage, bool writable) {
 			&& pml4_set_page (t->pml4, upage, kpage, writable));
 }
 #else
+
 /* From here, codes will be used after project 3.
  * If you want to implement the function for only project 2, implement it on the
  * upper block. */
 
 static bool
 lazy_load_segment (struct page *page, void *aux) {
-	/* TODO: Load the segment from the file */
-	/* TODO: This called when the first page fault occurs on address VA. */
-	/* TODO: VA is available when calling this function. */
+
+	struct load_segment_arg *arg = aux;
+	struct file *file = arg->file;
+	off_t ofs = arg->ofs;
+	size_t page_read_bytes = arg->page_read_bytes;
+	size_t page_zero_bytes = arg->page_zero_bytes;
+
+	/* 할당받은 페이지에 파일 내용을 읽어 채운다. */
+	void *kpage = page->frame->kva;
+	if (file_read_at (file, kpage, page_read_bytes, ofs) != (int) page_read_bytes)
+		// 실패시 free 처리 추가?
+		return false;
+	
+	memset (kpage + page_read_bytes, 0, page_zero_bytes);
+
+	free(arg); //추후 안쓰기 때문에 여기서 free, 문제 되면 exit과정에서 고려
+
+	return true;
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -911,6 +936,7 @@ lazy_load_segment (struct page *page, void *aux) {
  *
  * Return true if successful, false if a memory allocation error
  * or disk read error occurs. */
+
 static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes, bool writable) {
@@ -925,13 +951,21 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		void *aux = NULL;
-		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux))
+		/* arg 세팅 */
+		struct load_segment_arg *arg = malloc(sizeof(struct load_segment_arg));
+		if(arg == NULL)	return false;
+		arg->file = file;
+		arg->ofs = ofs;
+		arg->page_read_bytes = page_read_bytes;
+		arg->page_zero_bytes = page_zero_bytes;
+		
+		if (!vm_alloc_page_with_initializer (VM_ANON, upage, writable, lazy_load_segment, arg)){
+			free(arg);
 			return false;
+		}
 
 		/* Advance. */
+		ofs += page_read_bytes;
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
@@ -945,10 +979,15 @@ setup_stack (struct intr_frame *if_) {
 	bool success = false;
 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
 
-	/* TODO: Map the stack on stack_bottom and claim the page immediately.
-	 * TODO: If success, set the rsp accordingly.
-	 * TODO: You should mark the page is stack. */
-	/* TODO: Your code goes here */
+	void *aux = NULL;
+	if(!vm_alloc_page_with_initializer (VM_ANON | IS_STACK, stack_bottom, true, stack_init, aux))
+		return false;
+
+	if(!vm_claim_page(stack_bottom))
+		return false;
+
+	if_->rsp = USER_STACK;
+	success = true;
 
 	return success;
 }
