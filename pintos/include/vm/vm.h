@@ -105,8 +105,7 @@ struct load_segment_arg {
 
 #include "threads/thread.h"
 void supplemental_page_table_init (struct supplemental_page_table *spt);
-bool supplemental_page_table_copy (struct supplemental_page_table *dst,
-		struct supplemental_page_table *src);
+bool supplemental_page_table_copy (struct thread *child , struct thread *parent);
 void supplemental_page_table_kill (struct supplemental_page_table *spt);
 struct page *spt_find_page (struct supplemental_page_table *spt,
 		void *va);

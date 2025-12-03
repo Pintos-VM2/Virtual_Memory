@@ -220,13 +220,22 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 	if(!not_present)
 		return false;
 
-	if(addr >= (curr->user_rsp - 8))
+	void *user_rsp = user ? f->rsp : thread_current()->user_rsp;
+
+	struct page *page = spt_find_page(spt, addr);
+	if(page == NULL){
+
+		if(addr < (user_rsp - 8) || addr > USER_STACK)
+			return false;
+
 		if(!vm_stack_growth(addr))
 			return false;
 
-	struct page *page = spt_find_page(spt, addr);
-	if(page == NULL)
-		return false;
+		page = spt_find_page(spt, addr);
+		if(page == NULL)
+			return false;
+
+	}
 
 	return vm_do_claim_page (page);
 }
@@ -290,14 +299,22 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 
 /* Copy supplemental page table from src to dst */
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst , struct supplemental_page_table *src) {
+supplemental_page_table_copy (struct thread *child , struct thread *parent) {
 	
+	struct supplemental_page_table *dst = &child->spt;
+	struct supplemental_page_table *src = &parent->spt;
+
 	struct hash_iterator i;
 
 	if (src == NULL)
 		return false;
 
 	hash_first(&i, &src->hash);
+
+	struct thread *dup_file = file_duplicate(parent->execute_file);
+	if(dup_file == NULL)
+		return false;
+	child->execute_file = dup_file;
 
 	while (hash_next(&i) != NULL) {
 		struct hash_elem *e = hash_cur(&i);
@@ -311,6 +328,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst , struct suppl
 			case VM_UNINIT:
 				struct load_segment_arg *c_aux = malloc(sizeof(struct load_segment_arg));
 				memcpy(c_aux, p_aux, sizeof(struct load_segment_arg));
+				c_aux->file = dup_file;
 
 				if(!vm_alloc_page_with_initializer(p_uninit.type, p_page->va, p_page->writable, p_uninit.init, c_aux))
 					return false;
