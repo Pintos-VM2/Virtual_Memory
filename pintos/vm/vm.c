@@ -313,39 +313,6 @@ supplemental_page_table_copy (struct supplemental_page_table *dst ,
 			}
 		}
 	return true;
-
-
-	// struct hash *src_hash = &src->hash;
-    // struct hash *dst_hash = &dst->hash;
-    // struct hash_iterator i;
-
-    // hash_first(&i, src_hash);
-    // while (hash_next(&i))
-    // {
-    //     struct page *p = hash_entry(hash_cur(&i), struct page, hash_elem);
-    //     if (p == NULL)
-    //         return false;
-    //     enum vm_type type = page_get_type(p);
-    //     struct page *child;
-
-    //     if (p->operations->type == VM_UNINIT)
-    //     {
-    //         if (!vm_alloc_page_with_initializer(type, p->va, p->writable, p->uninit.init, p->uninit.aux))
-    //             return false;
-    //     }
-    //     else
-    //     {
-    //         if (!vm_alloc_page(type, p->va, p->writable))
-    //             return false;
-    //         if (!vm_claim_page(p->va))
-    //             return false;
-
-    //         child = spt_find_page(dst, p->va);
-    //         memcpy(child->frame->kva, p->frame->kva, PGSIZE);
-    //     }
-    // }
-
-    // return true;
 }
 
 /* Free the resource hold by the supplemental page table */
