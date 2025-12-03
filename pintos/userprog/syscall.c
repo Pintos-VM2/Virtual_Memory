@@ -37,6 +37,7 @@ static void s_seek(int fd, unsigned position);
 static bool s_remove(const char *file);
 static unsigned s_tell(int fd);
 static int s_dup2(int oldfd, int newfd);
+static void *s_mmap (void *addr, size_t length, int writable, int fd, off_t offset);
 
 static void valid_get_addr(void *addr);
 static void valid_get_buffer(char *addr, unsigned length);
@@ -172,6 +173,10 @@ syscall_handler (struct intr_frame *f) {
 
 		case SYS_DUP2:
 			f -> R.rax = s_dup2((int) f -> R.rdi, f -> R.rsi);
+			break;
+
+		case SYS_MMAP:
+			f->R.rax = s_mmap((void *)f -> R.rdi, (size_t)f -> R.rsi, (int)f -> R.rdx, (int)f -> R.rcx, (off_t)f -> R.r8);
 			break;
 
 		default:
@@ -461,6 +466,31 @@ s_dup2(int oldfd, int newfd){
 	wrap_oldfd -> ref_count++;
 	return newfd;
 }
+
+/* 검증만 하고 do_mmap 호출하자, 실패시 NULL */
+static void *
+s_mmap (void *addr, size_t length, int writable, int fd, off_t offset){
+
+	/* 인자 검증 */
+	struct file_descriptor *wrapper = get_fd_wrapper(fd);
+	enum fd_type type = wrapper->type;
+	if(length == 0 || addr == NULL || pg_round_down(addr) != addr || type == FD_STDIN || type == FD_STDOUT)
+		return NULL;
+
+	/* 페이지 범위가 기존 매핑된 페이지와 겹칠 경우 검증 */
+	int rp_max = length / PGSIZE;
+	for(int i = 0; i <= rp_max; i++){
+		if(spt_find_page(&thread_current()->spt , addr+(i*PGSIZE)))
+			return NULL;
+	}
+
+	if(!do_mmap(addr, length, writable, wrapper->file, offset))
+		return NULL;
+
+	return true;
+}
+
+
 
 /* file을 받으면 wrapper 구조체인 file_descriptor를 반환하는 함수 */
 struct file_descriptor *create_fd_wrapper(struct file *f, enum fd_type f_type){

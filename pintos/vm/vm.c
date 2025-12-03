@@ -188,7 +188,7 @@ bool stack_init (struct page *page, void *aux){
 /* Growing the stack. */
 /* caller가 claim 함 */
 static bool
-vm_stack_growth (void *addr UNUSED) {
+vm_stack_growth (void *addr) {
 
 	void *va = pg_round_down(addr);
 	/* stack 크기 제한 초과 */
@@ -220,12 +220,10 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 	if(!not_present)
 		return false;
 
-	void *user_rsp = user ? f->rsp : thread_current()->user_rsp;
-
 	struct page *page = spt_find_page(spt, addr);
 	if(page == NULL){
 
-		if(addr < (user_rsp - 8) || addr > USER_STACK)
+		if(addr < (curr->user_rsp - 8) || addr > USER_STACK)
 			return false;
 
 		if(!vm_stack_growth(addr))
@@ -234,7 +232,6 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 		page = spt_find_page(spt, addr);
 		if(page == NULL)
 			return false;
-
 	}
 
 	return vm_do_claim_page (page);
