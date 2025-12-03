@@ -2,6 +2,7 @@
 
 #include "threads/malloc.h"
 #include "vm/vm.h"
+#include "userprog/process.h"
 #include "threads/mmu.h"
 #include "vm/inspect.h"
 #include "lib/kernel/hash.h"
@@ -70,26 +71,50 @@ bool
 vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		vm_initializer *init, void *aux) {
 
-	ASSERT (VM_TYPE(type) != VM_UNINIT)
+	ASSERT (VM_TYPE(type) != VM_UNINIT);
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
 
-	/* Check wheter the upage is already occupied or not. */
-	if (spt_find_page (spt, upage) == NULL) {
-		/* TODO: Create the page, fetch the initialier according to the VM type,
-		 * TODO: and then create "uninit" page struct by calling uninit_new. You
-		 * TODO: should modify the field after calling the uninit_new. */
+	struct page *p = NULL;
 
-		/* TODO: Insert the page into the spt. */
+	/* Check wheter the upage is already occupied or not. */
+	if (spt_find_page (spt, upage) != NULL)
+		return false;
+	
+	p = (struct page *)malloc(sizeof *p);
+	if (p == NULL)
+		goto err;
+
+	bool (*initializer)(struct page *, enum vm_type, void *) = NULL;
+	switch(VM_TYPE(type)) {
+		case VM_ANON:
+			initializer = anon_initializer;
+			break;
+		case VM_FILE:
+			initializer = file_backed_initializer;
+			break;
+		default:
+			goto err;
 	}
+
+	uninit_new(p, upage, init, type, aux, initializer);
+	p->writable = writable;
+
+	if (!spt_insert_page(spt, p))
+		goto err;
+
+	return true;
 err:
+	if (p != NULL)
+		free(p);
+	
 	return false;
 }
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page *
 spt_find_page (struct supplemental_page_table *spt, void *va) {
-	struct page temp_page;
+	struct page temp_page = {0};
     struct hash_elem *e;
 
     va = pg_round_down (va);
@@ -145,7 +170,7 @@ vm_get_frame (void) {
 	if (kpage == NULL)
 		PANIC("to do");
 
-	struct frame *f = malloc(sizeof(struct frame));
+	struct frame *f = malloc(sizeof *f);
 	if (f == NULL) {
 		palloc_free_page(kpage);
 		PANIC("memory allocation failed");
@@ -171,14 +196,29 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* Return true on success */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
-	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
-	struct page *page = NULL;
-	/* TODO: Validate the fault */
-	/* TODO: Your code goes here */
+vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr,
+		bool user UNUSED, bool write, bool not_present) {
+	if (addr == NULL)
+		return false;
+	
+	if (is_kernel_vaddr(addr))
+		return false;
 
-	return vm_do_claim_page (page);
+	struct supplemental_page_table *spt = &thread_current ()->spt;
+	struct page *page = NULL;
+
+	if (not_present) {
+		page = spt_find_page(spt, addr);
+		
+		if (page == NULL)
+			return false;
+		if (write && !page->writable)
+		 	return false;
+
+		return vm_do_claim_page (page);
+	}
+	else
+		return false;
 }
 
 /* Free the page.
@@ -210,12 +250,12 @@ vm_do_claim_page (struct page *page) {
     frame->page = page;
     page->frame = frame;
 
-    /* 페이지 내용 채우기 (lazy load / swap-in) */
-    if (!swap_in(page, frame->kva))
+	/* VA → KVA 매핑 */
+    if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable))
         goto error;
 
-    /* VA → KVA 매핑 */
-    if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable))
+    /* 페이지 내용 채우기 (lazy load / swap-in) */
+    if (!swap_in(page, frame->kva))
         goto error;
 
     return true;
@@ -242,24 +282,44 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst ,
 	struct supplemental_page_table *src) {
-	struct hash_iterator i;
+		struct hash_iterator i;
+		hash_first(&i, &src->hash);
+		while(hash_next(&i))
+		{
+			
+			struct page *src_page = hash_entry(hash_cur(&i), struct page, hash_elem);
+	
+			enum vm_type type = page_get_type(src_page);
+			void *upage = src_page->va;
+			bool writable = src_page->writable;
 
-	if (src == NULL){
-		return false;
-	}
+			if (type == VM_UNINIT) {
+				enum vm_type real_type = VM_TYPE(src_page->uninit.type);
+				vm_initializer *init = src_page->uninit.init;
+				void* aux = src_page->uninit.aux;
+				if (real_type == VM_FILE) {
+					aux = duplicate_lazy_load_aux(src_page->uninit.aux);
+					if (aux == NULL)
+						return false;
+				}
+				else {
+					vm_alloc_page_with_initializer(real_type, upage, writable, init, aux);
+				}
+			}
+			else {
+				if (!vm_alloc_page(type, upage, writable))
+					return false;
 
-	if (dst != NULL){
-		hash_init (&dst->hash, (hash_hash_func *)hash_page, (hash_less_func *)less_page, NULL);
-	}
+				if (!vm_claim_page(upage))
+					return false;
 
-	hash_first(&i, &src->hash);
+				struct page *dst_page = spt_find_page(dst, upage);
+				if (dst_page == NULL)
+					return false;
 
-	while (hash_next(&i) != NULL) {
-		struct hash_elem *e = hash_cur(&i);
-		struct page *page = hash_entry(e, struct page, hash_elem);
-		hash_insert(&dst->hash, &page->hash_elem);
-	}
-
+				memcpy(dst_page->frame->kva, src_page->frame->kva, PGSIZE);
+			}
+		}
 	return true;
 }
 
@@ -267,7 +327,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst ,
 void
 supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	if (spt == NULL){
-	return;
+		return;
 	}
 
 	hash_destroy(&spt->hash, (hash_action_func *)page_destructor);

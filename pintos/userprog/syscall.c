@@ -1,6 +1,7 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+#include "vm/vm.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/loader.h"
@@ -261,7 +262,7 @@ check_valid_access(void *uaddr){
 	struct thread *cur = thread_current();
 	if(uaddr == NULL) s_exit(-1);
 	if(!is_user_vaddr(uaddr)) s_exit(-1);
-	if(pml4_get_page(cur -> pml4, uaddr) == NULL) s_exit(-1);
+	if(spt_find_page(&(cur->spt), uaddr) == NULL) s_exit(-1);
 }
 
 static void 

@@ -1,6 +1,8 @@
 #ifndef VM_VM_H
 #define VM_VM_H
 #include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
 #include "threads/palloc.h"
 #include "lib/kernel/hash.h"
 
@@ -35,7 +37,7 @@ enum vm_type {
 struct page_operations;
 struct thread;
 
-extern struct list frame_list;  /* Declaration only - defined in vm.c */
+extern struct list frame_list; /* Declaration only - defined in vm.c */
 
 #define VM_TYPE(type) ((type) & 7)
 
@@ -69,7 +71,7 @@ struct page {
 struct frame {
 	void *kva;
 	struct page *page;
-	struct list_elem *frame_elem;
+	struct list_elem frame_elem;
 };
 
 /* The function table for page operations.
@@ -80,6 +82,7 @@ struct page_operations {
 	bool (*swap_in) (struct page *, void *);
 	bool (*swap_out) (struct page *);
 	void (*destroy) (struct page *);
+	void *(*duplicate_aux)(void *aux);
 	enum vm_type type;
 };
 
