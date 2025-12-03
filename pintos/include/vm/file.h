@@ -3,10 +3,12 @@
 #include "filesys/file.h"
 #include "vm/vm.h"
 
+#define SWAP_INVALID SIZE_MAX
 struct page;
 enum vm_type;
 
 struct file_page {
+	size_t swap_slot;
 };
 
 void vm_file_init (void);

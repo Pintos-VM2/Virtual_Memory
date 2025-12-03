@@ -69,7 +69,7 @@ struct page {
 struct frame {
 	void *kva;
 	struct page *page;
-	struct list_elem *frame_elem;
+	struct list_elem frame_elem;
 };
 
 /* The function table for page operations.
@@ -109,6 +109,7 @@ void vm_init (void);
 bool vm_try_handle_fault (struct intr_frame *f, void *addr, bool user,
 		bool write, bool not_present);
 
+struct frame * vm_get_frame (void);
 #define vm_alloc_page(type, upage, writable) \
 	vm_alloc_page_with_initializer ((type), (upage), (writable), NULL, NULL)
 bool vm_alloc_page_with_initializer (enum vm_type type, void *upage,

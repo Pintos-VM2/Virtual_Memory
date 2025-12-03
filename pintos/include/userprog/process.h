@@ -15,6 +15,13 @@ struct child_status{
 	struct list_elem child_elem;        // 자식 리스트의 요소
 };
 
+struct aux{
+	struct file * file;
+	off_t ofs;
+	size_t read_bytes;
+	size_t zero_bytes;
+};
+
 tid_t process_create_initd (const char *file_name);
 tid_t process_fork (const char *name, struct intr_frame *if_);
 int process_exec (void *f_name);
