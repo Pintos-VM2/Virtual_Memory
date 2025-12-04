@@ -903,7 +903,7 @@ install_page (void *upage, void *kpage, bool writable) {
 static bool
 lazy_load_segment (struct page *page, void *aux) {
 
-	struct load_segment_arg *arg = aux;
+	struct file_load_arg *arg = aux;
 	struct file *file = arg->file;
 	off_t ofs = arg->ofs;
 	size_t page_read_bytes = arg->page_read_bytes;
@@ -952,7 +952,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* arg 세팅 */
-		struct load_segment_arg *arg = malloc(sizeof(struct load_segment_arg));
+		struct file_load_arg *arg = malloc(sizeof(struct file_load_arg));
 		if(arg == NULL)	return false;
 		arg->file = file;
 		arg->ofs = ofs;
@@ -979,8 +979,7 @@ setup_stack (struct intr_frame *if_) {
 	bool success = false;
 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
 
-	void *aux = NULL;
-	if(!vm_alloc_page_with_initializer (VM_ANON | IS_STACK, stack_bottom, true, stack_init, aux))
+	if(!vm_alloc_page (VM_ANON | IS_STACK, stack_bottom, true))
 		return false;
 
 	if(!vm_claim_page(stack_bottom))
