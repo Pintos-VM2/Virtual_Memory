@@ -61,10 +61,6 @@ struct lock filesys_lock;
 static int64_t
 get_user (const uint8_t *uaddr) {
     int64_t result;
-
-    if (uaddr == NULL || !is_user_vaddr (uaddr))
-        return -1;
-
     __asm __volatile (
         "movabsq $done_get, %0\n"
         "movzbq %1, %0\n"
@@ -76,10 +72,6 @@ get_user (const uint8_t *uaddr) {
 static bool
 put_user (uint8_t *udst, uint8_t byte) {
     int64_t error_code;
-
-    if (udst == NULL || !is_user_vaddr (udst))
-        return false;
-
     __asm __volatile (
         "movabsq $done_put, %0\n"
         "movb %b2, %1\n"
@@ -177,6 +169,23 @@ syscall_handler (struct intr_frame *f) {
 	}
 }
 
+static bool
+is_stack_growth_candidate(void *addr) {
+    struct thread *t = thread_current();
+    void *rsp = t->rsp;   // syscall_entry에서 저장해 둔 user rsp
+
+    if (!is_user_vaddr(addr))
+        return false;
+
+    if (addr < rsp - 8)
+        return false;
+
+    if (addr < USER_STACK - (1 << 20))
+        return false;
+
+    return true;
+}
+
 static bool check_writable(char *buffer, unsigned length) {
 	char *start = buffer;
 	char *end = buffer + length -1;
@@ -184,8 +193,11 @@ static bool check_writable(char *buffer, unsigned length) {
 	struct page *sp = spt_find_page(&thread_current() -> spt, start);
  	struct page *ep = spt_find_page(&thread_current() -> spt, end);
 
- 	if ((sp != NULL && !sp->writable) || (ep == NULL && !ep->writable))
+ 	if ((sp != NULL && !sp->writable) || (ep != NULL && !ep->writable))
  		return false;
+	
+	if ((sp == NULL && !is_stack_growth_candidate(sp)) || (ep == NULL && !is_stack_growth_candidate(ep)))
+		return false;
 
 	return true;
 }

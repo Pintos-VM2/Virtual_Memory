@@ -201,7 +201,6 @@ bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
-	struct page *p = spt_find_page(spt, addr);
 	void *rsp;
 
 	/* Validate the fault */
@@ -217,11 +216,14 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 	else
 		rsp = thread_current() -> rsp;
 
-	if (addr >= rsp - 8 && addr >= USER_STACK - (1 << 20) && is_user_vaddr(addr))
+	if (addr >= rsp - 8 && addr < USER_STACK && addr >= USER_STACK - (1 << 20) && is_user_vaddr(addr))
 		vm_stack_growth(addr);
 
 	struct page *page = spt_find_page(spt, addr);
 	if(page == NULL)
+		return false;
+
+	if (write && !page->writable)
 		return false;
 
 	return vm_do_claim_page (page);
