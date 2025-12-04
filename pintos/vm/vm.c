@@ -187,7 +187,8 @@ bool stack_init (struct page *page, void *aux){
 
 /* Growing the stack. */
 static void
-vm_stack_growth (void *addr UNUSED) {
+vm_stack_growth (void *addr) {
+	vm_alloc_page(VM_ANON | IS_STACK, pg_round_down(addr), 1);
 }
 
 /* Handle the fault on write_protected page */
@@ -200,14 +201,24 @@ bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
+	struct page *p = spt_find_page(spt, addr);
+	void *rsp;
 
 	/* Validate the fault */
 	if(addr == NULL || is_kernel_vaddr(addr))
 		return false;
 
-	//0 이면 이상한 접근(1이면 물리 페이지 메핑X)
+	// 매핑된 페이지지만 page fault가 발생한 상황 = 에러 상황
 	if(!not_present)
 		return false;
+	
+	if (user)
+		rsp = f->rsp;
+	else
+		rsp = thread_current() -> rsp;
+
+	if (addr >= rsp - 8 && addr >= USER_STACK - (1 << 20) && is_user_vaddr(addr))
+		vm_stack_growth(addr);
 
 	struct page *page = spt_find_page(spt, addr);
 	if(page == NULL)

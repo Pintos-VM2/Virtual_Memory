@@ -105,6 +105,7 @@ struct thread {
 	enum thread_status status;          /* 스레드 상태. */
 	char name[16];                      /* 이름 (디버깅 목적). */
 	int priority;                       /* 우선순위. */
+	void *rsp;							/* 쓰레드의 rsp값 */
 
 	/* thread.c와 synch.c가 공유함. */
 	struct list_elem elem;              /* 리스트 요소. */
