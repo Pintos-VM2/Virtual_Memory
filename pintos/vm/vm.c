@@ -187,7 +187,18 @@ bool stack_init (struct page *page, void *aux){
 
 /* Growing the stack. */
 static void
-vm_stack_growth (void *addr UNUSED) {
+vm_stack_growth (void *addr) {
+	void *page_start = pg_round_down(addr);
+
+	// SPT에 새로운 anon page 등록
+	if (!vm_alloc_page(VM_ANON, page_start, true)) {
+		return;
+	}
+
+	// lazy 아님 -> 즉시 frame 할당
+	if (!vm_claim_page(page_start)) {
+		return;
+	}
 }
 
 /* Handle the fault on write_protected page */
@@ -200,6 +211,8 @@ bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
+	// user mode or kernel mode로 확인하여 rsp 설정
+	void *rsp = user ? f->rsp : &thread_current()->tf.rsp;
 
 	/* Validate the fault */
 	if(addr == NULL || is_kernel_vaddr(addr))
@@ -210,8 +223,18 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 		return false;
 
 	struct page *page = spt_find_page(spt, addr);
-	if(page == NULL)
-		return false;
+	if(page == NULL){
+		// 스택에 존재하는 지 범위 체크
+		if(addr >= MIN_USER_STACK && addr < USER_STACK){
+			// rsp 범위 8비트 내에 잇는지 확인
+			if (addr >= rsp - 8 || addr >= rsp) {
+				vm_stack_growth(addr);
+				return true;
+			}
+		}else{
+			return false;
+		}
+	}
 
 	return vm_do_claim_page (page);
 }
