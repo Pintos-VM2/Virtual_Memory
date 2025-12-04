@@ -30,8 +30,15 @@ anon_initializer (struct page *page, enum vm_type type, void *kva) {
 	/* Set up the handler */
 	page->operations = &anon_ops;
 
+	/* anon_page 정보 세팅 */
 	struct anon_page *anon_page = &page->anon;
-	/* uy :  anon_page 정보 세팅? */
+	anon_page->type = type;
+
+	/* IS_STACK 이면 stack setting */
+	if (type & IS_STACK)
+		memset(kva, 0, PGSIZE);
+
+	/* todo : 그냥 ANON이면 추가 */
 
 	return true;
 }
@@ -53,5 +60,10 @@ anon_swap_out (struct page *page) {
 static void
 anon_destroy (struct page *page) {
 	struct anon_page *anon_page = &page->anon;
+	
 	/* anon_page 구조체 만들어지면 free 추가*/
+
+	// pml4_clear_page(&thread_current()->spt, page->va);	
+
+	// palloc_free_page(page->frame->kva);
 }

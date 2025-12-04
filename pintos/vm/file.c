@@ -18,16 +18,10 @@ static const struct page_operations file_ops = {
 	.type = VM_FILE,
 };
 
-// struct file_init_arg {
-// 	struct file *file; 
-// 	off_t offset;
-// 	size_t page_read_bytes;
-// 	size_t page_zero_bytes;
-// };
-
 /* The initializer of file vm */
 void
 vm_file_init(void) {
+	/* lock 추가? */
 }
 
 /* 마지막 페이지 남는 공간은 0으로 채우고, 나중에 file-back할 때 해당 공간은 file에 넣으면 안된다 */
@@ -52,7 +46,7 @@ file_init(struct page *page, void *aux){
 	if(page_zero_bytes)
 		page->file.is_last = true;
 	page->file.page_read_bytes = page_read_bytes;
-	page->file.file = file;
+	page->file.file = file; //reopen된 page 고유 file임
 	page->file.ofs = ofs;
 
 	free(arg);
@@ -87,7 +81,15 @@ static void
 file_backed_destroy (struct page *page) {
 	struct file_page *file_page UNUSED = &page->file;
 
-	/* page 구조체 내부 정리 */
+	/* page 정리 */
+	write_back(page);
+
+	if(page->file.file)
+		free(page->file.file);
+
+	pml4_clear_page(&thread_current()->spt, page->va);	
+
+	palloc_free_page(page->frame->kva);
 }
 
 /* Do the mmap */
@@ -124,16 +126,11 @@ do_munmap (void *addr) {
 
 	struct thread *curr = thread_current();
 
-	while(true){
+	while(1){
 
 		struct page *page = spt_find_page(&curr->spt, addr);
-		if(pml4_is_dirty(curr->pml4, addr))
-			write_back(page);
 
-		pml4_clear_page(&curr->spt, addr);
-		palloc_free_page(page->frame->kva);
-
-		spt_remove_page(&curr->spt, page);
+		spt_remove_page(&curr->spt, page); // destory에 write_back, pml4_clear 있음
 
 		if(page->file.is_last)
 			break;
@@ -142,9 +139,16 @@ do_munmap (void *addr) {
 	}
 }
 
-bool
+void
 write_back(struct page *page){
 
+	if(!pml4_is_dirty(thread_current()->pml4, page->va))
+		return;
 
+	off_t ofs = page->file.ofs;
+	size_t read_bytes = page->file.page_read_bytes;
+	struct file *file = page->file.file;
 
+	if(file_write_at(file, page->frame->kva, read_bytes, ofs) != (int) read_bytes)
+		PANIC("DEBUG : write back 오류 !!! ");
 }

@@ -16,6 +16,8 @@
 #include "threads/malloc.h"
 #include <string.h>
 
+#include "vm/vm.h"
+
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 static void s_halt(void);
@@ -203,6 +205,10 @@ static void valid_get_buffer(char *buffer, unsigned length){
 static void valid_put_buffer(char *buffer, unsigned length){
 
 	char *end = buffer + length -1;
+
+	if(!check_writable(buffer) || !check_writable(end))
+		s_exit(-1);
+
 	if(put_user(buffer, 0) == 0 || put_user(end, 0) == 0)
 		s_exit(-1);
 }

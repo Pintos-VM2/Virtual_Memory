@@ -63,6 +63,9 @@ uninit_initialize (struct page *page, void *kva) {
 static void
 uninit_destroy (struct page *page) {
 	struct uninit_page *uninit = &page->uninit;
+
+	/* 물리 페이지도 없고, pml4 매핑도 없음 */
+	/* page 구조체 안의 내용만 free*/
 	if(uninit->aux)
-		free(uninit->aux); //uninit이면 aux free 안됨
+		free(uninit->aux);
 }

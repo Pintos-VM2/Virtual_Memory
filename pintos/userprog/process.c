@@ -978,8 +978,7 @@ setup_stack (struct intr_frame *if_) {
 	bool success = false;
 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
 
-	void *aux = NULL;
-	if(!vm_alloc_page_with_initializer (VM_ANON | IS_STACK, stack_bottom, true, stack_init, aux))
+	if(!vm_alloc_page (VM_ANON | IS_STACK, stack_bottom, true))
 		return false;
 
 	if(!vm_claim_page(stack_bottom))

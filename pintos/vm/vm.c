@@ -179,13 +179,6 @@ vm_get_frame (void) {
 	return f;
 }
 
-bool 
-stack_init (struct page *page, void *aux){
-	/* 일단 zero-fill 정도 */
-	memset(page->frame->kva, 0, PGSIZE);
-	return true;
-}
-
 /* Growing the stack. */
 /* caller가 claim 함 */
 static bool
@@ -195,7 +188,7 @@ vm_stack_growth (void *addr) {
 	/* stack 크기 제한 초과 */
 	if(va < MIN_USER_STACK) return false;
 
-	if(!vm_alloc_page_with_initializer(VM_ANON | IS_STACK, va, true, stack_init, NULL))
+	if(!vm_alloc_page(VM_ANON | IS_STACK, va, true))
 		return false;
 
 	return true;
@@ -366,4 +359,16 @@ static void
 page_destructor (struct hash_elem *e, void *aux UNUSED) {
 	struct page *page = hash_entry(e, struct page, hash_elem);
 	vm_dealloc_page(page); 
+}
+
+bool
+check_writable (void *uaddr) {
+	struct page *page = spt_find_page(&thread_current()->spt, uaddr);
+	if(page == NULL)
+		return true; //page아직 없는거면 그냥 리턴하고 이어서 해라
+
+	if(page->writable)
+		return true;
+
+	return false;
 }

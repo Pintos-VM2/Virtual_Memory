@@ -154,12 +154,11 @@ page_fault (struct intr_frame *f) {
 	page_fault_cnt++;
 
 	if(user){
-	  	thread_current() -> exit_status = -1;
-	  	thread_exit();
-	  	return;
+		thread_current() -> exit_status = -1;
+		thread_exit();
 	}
 
-	if (fault_addr < KERN_BASE){
+	if (!user && fault_addr < KERN_BASE){
 		f->rip = f->R.rax;     
     	f->R.rax = -1;   
 		return;

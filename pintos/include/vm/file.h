@@ -7,6 +7,7 @@ struct page;
 enum vm_type;
 
 struct file_page {
+	bool is_last;
 	size_t page_read_bytes;
 	struct file *file;
 	off_t ofs;
