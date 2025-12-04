@@ -14,6 +14,7 @@
 #include "userprog/process.h"
 #include "devices/input.h"
 #include "threads/malloc.h"
+#include "vm/vm.h"
 #include <string.h>
 
 void syscall_entry (void);
@@ -261,7 +262,27 @@ check_valid_access(void *uaddr){
 	struct thread *cur = thread_current();
 	if(uaddr == NULL) s_exit(-1);
 	if(!is_user_vaddr(uaddr)) s_exit(-1);
-	if(pml4_get_page(cur -> pml4, uaddr) == NULL) s_exit(-1);
+	// 기존 pml4방식은 현재 lazy_load 방식에서 pml4에 먼저 등록이 안될 수 있다.
+	// 그렇기에 pml4를 그대로 사용하면 page fault가 발생되어 exit(-1)로 빠지게 된다.
+	// 이를 막기 위해서는 spt에서 uaddr을 받아 페이지의 존재 여부를 확인하고 진행해야 한다.
+	// 단점으로는 시작 버퍼만 확인하는 거라 문자열 전체 검증은 힘들다.
+	struct page *page = spt_find_page(&cur->spt, uaddr);
+	 // SPT에 페이지가 있으면 실제로 메모리에 로드 (lazy loading)
+	if(page != NULL) {
+   	// 아직 물리 메모리에 매핑되지 않았다면 claim
+   		if(pml4_get_page(cur->pml4, uaddr) == NULL) {
+   			if(!vm_claim_page(uaddr)) {
+   				s_exit(-1);
+			}
+   		}
+   		return;
+   	}
+     
+   	// SPT에도 없고 pml4에도 없으면 invalid access
+   	if(pml4_get_page(cur->pml4, uaddr) == NULL) {
+   		s_exit(-1);
+	}
+
 }
 
 static void 
