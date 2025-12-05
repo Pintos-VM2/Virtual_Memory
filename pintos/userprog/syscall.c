@@ -73,13 +73,12 @@ static bool
 put_user (uint8_t *udst, uint8_t byte) {
     int64_t error_code;
     __asm __volatile (
-        "movabsq $done_put, %0\n"
-        "movb %b2, %1\n"
-        "done_put:\n"
-        : "=&a" (error_code), "=m" (*udst) : "q" (byte));
+    "movabsq $done_put, %0\n"
+    "movb %b2, %1\n"
+    "done_put:\n"
+    : "=&a" (error_code), "=m" (*udst) : "q" (byte));
     return error_code != -1;
 }
-
 
 void
 syscall_init (void) {
@@ -169,23 +168,6 @@ syscall_handler (struct intr_frame *f) {
 	}
 }
 
-static bool
-is_stack_growth_candidate(void *addr) {
-    struct thread *t = thread_current();
-    void *rsp = t->rsp;   // syscall_entry에서 저장해 둔 user rsp
-
-    if (!is_user_vaddr(addr))
-        return false;
-
-    if (addr < rsp - 8)
-        return false;
-
-    if (addr < USER_STACK - (1 << 20))
-        return false;
-
-    return true;
-}
-
 static bool check_writable(char *buffer, unsigned length) {
 	char *start = buffer;
 	char *end = buffer + length -1;
@@ -195,9 +177,6 @@ static bool check_writable(char *buffer, unsigned length) {
 
  	if ((sp != NULL && !sp->writable) || (ep != NULL && !ep->writable))
  		return false;
-	
-	if ((sp == NULL && !is_stack_growth_candidate(sp)) || (ep == NULL && !is_stack_growth_candidate(ep)))
-		return false;
 
 	return true;
 }
@@ -371,18 +350,18 @@ s_filesize(int fd){
 static int 
 s_read(int fd, void *buffer, unsigned size){
 
-	if(size == 0)
+	if (size == 0)
 		return 0;
 
 	valid_put_buffer(buffer, size);
 
 	if (!check_writable(buffer, size))
-		s_exit(-1);
+	 	s_exit(-1);
 
 	struct file_descriptor *wrap_fd = get_fd_wrapper(fd);
 	int bytes_rd = -1;
 
-	if(wrap_fd == NULL){
+	if (wrap_fd == NULL){
 		return -1;
 	}
 
