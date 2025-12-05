@@ -63,9 +63,6 @@ static int64_t
 get_user (const uint8_t *uaddr) {
     int64_t result;
 
-    if (uaddr == NULL || !is_user_vaddr (uaddr))
-        return -1;
-
     __asm __volatile (
         "movabsq $done_get, %0\n"
         "movzbq %1, %0\n"
@@ -77,9 +74,6 @@ get_user (const uint8_t *uaddr) {
 static bool
 put_user (uint8_t *udst, uint8_t byte) {
     int64_t error_code;
-
-    if (udst == NULL || !is_user_vaddr (udst))
-        return false;
 
     __asm __volatile (
         "movabsq $done_put, %0\n"
@@ -209,16 +203,15 @@ static void valid_put_buffer(char *buffer, unsigned length){
 	void *end_page = pg_round_down(buffer + length - 1);
 
 	for (void *page = start_page; page <= end_page; page += PGSIZE) {
-		// 각 페이지의 첫 바이트 읽기로 페이지 폴트 유도 (데이터 손상 방지)
-		uint8_t val;
-		valid_get_addr(page);
-
+	for (void *page = start_page; page <= end_page; page += PGSIZE) {	
 		// writable 체크
 		struct page *pg = spt_find_page(&thread_current()->spt, page);
 		if (pg != NULL && !pg->writable) {
 			s_exit(-1);
 		}
 	}
+
+	valid_get_addr(buffer);
 }
 
 static void 

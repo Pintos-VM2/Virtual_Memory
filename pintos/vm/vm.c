@@ -192,7 +192,8 @@ vm_stack_growth (void *addr) {
 	void *page_start = pg_round_down(addr);
 
 	// SPT에 새로운 anon page 등록
-	if (!vm_alloc_page(VM_ANON, page_start, true)) {
+	if(!vm_alloc_page_with_initializer(VM_ANON | IS_STACK, 
+		page_start, true, stack_init, NULL)){
 		return;
 	}
 
