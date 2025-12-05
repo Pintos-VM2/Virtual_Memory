@@ -202,16 +202,16 @@ static void valid_put_buffer(char *buffer, unsigned length){
 	void *start_page = pg_round_down(buffer);
 	void *end_page = pg_round_down(buffer + length - 1);
 
-	for (void *page = start_page; page <= end_page; page += PGSIZE) {
 	for (void *page = start_page; page <= end_page; page += PGSIZE) {	
 		// writable 체크
 		struct page *pg = spt_find_page(&thread_current()->spt, page);
 		if (pg != NULL && !pg->writable) {
 			s_exit(-1);
 		}
+
+		valid_get_addr(page);
 	}
 
-	valid_get_addr(buffer);
 }
 
 static void 
