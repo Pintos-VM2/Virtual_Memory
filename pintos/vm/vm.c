@@ -94,7 +94,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		}
 		/* uninit_new 호출 후 나머지 field 채우기 */
 		page->writable = writable;
-		
+
 		if(!spt_insert_page(spt, page)){
 			free(page);
 			goto err;
@@ -160,7 +160,7 @@ vm_evict_frame (void) {
  * space.*/
 static struct frame *
 vm_get_frame (void) {
-	/* TODO: Fill this function. */
+
 	void *kpage = palloc_get_page(PAL_USER);
 	if (kpage == NULL)
 		PANIC("to do");
@@ -179,15 +179,11 @@ vm_get_frame (void) {
 	return f;
 }
 
-bool stack_init (struct page *page, void *aux){
-	/* 일단 zero-fill 정도 */
-	memset(page->frame->kva, 0, PGSIZE);
-	return true;
-}
-
 /* Growing the stack. */
-static void
-vm_stack_growth (void *addr UNUSED) {
+/* caller가 claim 함 */
+static bool
+vm_stack_growth (void *addr) {
+	return vm_alloc_page(VM_ANON | IS_STACK, pg_round_down(addr), true);
 }
 
 /* Handle the fault on write_protected page */
@@ -199,19 +195,31 @@ vm_handle_wp (struct page *page UNUSED) {
 bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
 
-	struct supplemental_page_table *spt = &thread_current ()->spt;
+	struct thread *curr = thread_current();
+	struct supplemental_page_table *spt = &curr->spt;
+	void *rsp;
 
-	/* Validate the fault */
 	if(addr == NULL || is_kernel_vaddr(addr))
-		return false;
+		return false;	
 
-	//0 이면 이상한 접근(1이면 물리 페이지 메핑X)
 	if(!not_present)
 		return false;
 
+	rsp = user ? f->rsp : curr->user_rsp;
+
 	struct page *page = spt_find_page(spt, addr);
-	if(page == NULL)
-		return false;
+	if(page == NULL){
+
+		if(addr < (rsp - 8) || addr > USER_STACK || addr < MIN_USER_STACK)
+			return false;
+
+		if(!vm_stack_growth(addr))
+			return false;
+
+		page = spt_find_page(spt, addr);
+		if(page == NULL)
+			return false;
+	}
 
 	return vm_do_claim_page (page);
 }
@@ -287,7 +295,7 @@ supplemental_page_table_copy (struct thread *child , struct thread *parent) {
 
 	hash_first(&i, &src->hash);
 
-	struct thread *dup_file = file_duplicate(parent->execute_file);
+	struct file *dup_file = file_duplicate(parent->execute_file);
 	if(dup_file == NULL)
 		return false;
 	child->execute_file = dup_file;
@@ -297,13 +305,13 @@ supplemental_page_table_copy (struct thread *child , struct thread *parent) {
 		struct page *p_page = hash_entry(e, struct page, hash_elem);
 
 		struct uninit_page p_uninit = p_page->uninit;
-		struct load_segment_arg *p_aux = p_uninit.aux;
+		struct file_load_arg *p_aux = p_uninit.aux;
 
 		/* ops->type 확인 */
 		switch(p_page->operations->type){
 			case VM_UNINIT:
-				struct load_segment_arg *c_aux = malloc(sizeof(struct load_segment_arg));
-				memcpy(c_aux, p_aux, sizeof(struct load_segment_arg));
+				struct file_load_arg *c_aux = malloc(sizeof(struct file_load_arg));
+				memcpy(c_aux, p_aux, sizeof(struct file_load_arg));
 				c_aux->file = dup_file;
 
 				if(!vm_alloc_page_with_initializer(p_uninit.type, p_page->va, p_page->writable, p_uninit.init, c_aux))
@@ -325,7 +333,6 @@ supplemental_page_table_copy (struct thread *child , struct thread *parent) {
 				return false;
 		}	
 	}
-
 	return true;
 }
 
@@ -340,4 +347,16 @@ static void
 page_destructor (struct hash_elem *e, void *aux UNUSED) {
 	struct page *page = hash_entry(e, struct page, hash_elem);
 	vm_dealloc_page(page); 
+}
+
+bool
+check_writable (void *uaddr) {
+	struct page *page = spt_find_page(&thread_current()->spt, uaddr);
+	if(page == NULL)
+		return true; //page아직 없는거면 그냥 리턴하고 이어서 해라
+
+	if(page->writable)
+		return true;
+
+	return false;
 }

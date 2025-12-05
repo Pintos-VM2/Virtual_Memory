@@ -95,7 +95,7 @@ struct supplemental_page_table {
 	struct hash hash;
 };
 
-struct load_segment_arg {
+struct file_load_arg {
 	size_t page_read_bytes;
 	size_t page_zero_bytes;
 	struct file *file;
@@ -124,6 +124,6 @@ void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
 
-bool stack_init (struct page *page, void *aux);
+bool check_writable (void *uaddr);
 
 #endif  /* VM_VM_H */
