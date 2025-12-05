@@ -183,15 +183,7 @@ vm_get_frame (void) {
 /* caller가 claim 함 */
 static bool
 vm_stack_growth (void *addr) {
-
-	void *va = pg_round_down(addr);
-	/* stack 크기 제한 초과 */
-	if(va < MIN_USER_STACK) return false;
-
-	if(!vm_alloc_page(VM_ANON | IS_STACK, va, true))
-		return false;
-
-	return true;
+	return vm_alloc_page(VM_ANON | IS_STACK, pg_round_down(addr), true);
 }
 
 /* Handle the fault on write_protected page */
@@ -205,19 +197,20 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 
 	struct thread *curr = thread_current();
 	struct supplemental_page_table *spt = &curr->spt;
+	void *rsp;
 
-	/* Validate the fault */
 	if(addr == NULL || is_kernel_vaddr(addr))
 		return false;	
 
-	//0 이면 이상한 접근(1이면 물리 페이지 메핑X)
 	if(!not_present)
 		return false;
+
+	rsp = user ? f->rsp : curr->user_rsp;
 
 	struct page *page = spt_find_page(spt, addr);
 	if(page == NULL){
 
-		if(addr < (curr->user_rsp - 8) || addr > USER_STACK)
+		if(addr < (rsp - 8) || addr > USER_STACK || addr < MIN_USER_STACK)
 			return false;
 
 		if(!vm_stack_growth(addr))

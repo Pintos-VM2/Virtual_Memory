@@ -204,7 +204,7 @@ static void valid_put_buffer(char *buffer, unsigned length){
 	if(!check_writable(buffer) || !check_writable(end))
 		s_exit(-1);
 
-	if(put_user(buffer, 0) == 0 || put_user(end, 0) == 0)
+	if(get_user(buffer) < 0 || get_user(end) < 0)
 		s_exit(-1);
 }
 
@@ -499,46 +499,3 @@ struct file_descriptor *get_fd_wrapper(int fd){
 	struct file_descriptor *wrap_fd = cur -> fd_table[fd]; 
 	return wrap_fd;
 }
-
-
-
-/* TODO : 혹시 시작 주소 다음 바이트에 문제가 생기면 사용하기 */
-// static bool check_buffer(void *buffer, int length) {
-//     for (int i = 0; i < length; i++) {
-//         void *current_addr = ((char *)buffer) + i;
-//         if (check_valid_access(current_addr) == false) {
-//             return false;
-//         }
-//     }
-//     return true;
-// }
-
-
-/* Reads a byte at user virtual address UADDR.
- * UADDR must be below KERN_BASE.
- * Returns the byte value if successful, -1 if a segfault
- * occurred. */
-// static int64_t
-// get_user (const uint8_t *uaddr) {
-//     int64_t result;
-//     __asm __volatile (
-//     "movabsq $done_get, %0\n"  // $done_get의 주소 값을 rax 레지스터에 넣는 명령
-//     "movzbq %1, %0\n"		   // [uadder] 메모리에서 1바이트 가져와서 8비트 -> 64비트 zero-extend -> rax 레지스터로  
-//     "done_get:\n"		
-//     : "=&a" (result) : "m" (*uaddr)); // 출력 0번 rax -> result, 출력 1번 m(memory) -> uadder
-//     return result;
-// }
-
-// /* Writes BYTE to user address UDST.
-//  * UDST must be below KERN_BASE.
-//  * Returns true if successful, false if a segfault occurred. */
-// static bool
-// put_user (uint8_t *udst, uint8_t byte) {
-//     int64_t error_code;
-//     __asm __volatile (
-//     "movabsq $done_put, %0\n" // done_put -> rax(폴트 핸들러에서 다시 점프)
-//     "movb %b2, %1\n"		  // q의 하위 8비트 레지스터 -> m(*udst)
-//     "done_put:\n"			  // 성공 -> 그냥 넘어감, 페이지 폴트 -> 핸들러 갔다가 다시 돌아옴(rax = -1, rip = done_put)
-//     : "=&a" (error_code), "=m" (*udst) : "q" (byte));	//출력 0번 rax -> error_code, 출력 1번 m -> udst, 입력 0 q 
-//     return error_code != -1;
-// }
