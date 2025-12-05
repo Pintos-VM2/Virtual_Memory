@@ -7,6 +7,7 @@
 #include "lib/kernel/hash.h"
 #include "threads/vaddr.h"
 #include "lib/kernel/list.h"
+#include <string.h>
 
 static void page_destructor (struct hash_elem *e, void *aux UNUSED);
 /* Global frame list for eviction */
@@ -211,8 +212,9 @@ bool
 vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bool not_present) {
 
 	struct supplemental_page_table *spt = &thread_current ()->spt;
+	struct page *page = spt_find_page(spt, addr);
 	// user mode or kernel mode로 확인하여 rsp 설정
-	void *rsp = user ? f->rsp : &thread_current()->tf.rsp;
+	void *rsp = user ? f->rsp : thread_current()->tf.rsp;
 
 	/* Validate the fault */
 	if(addr == NULL || is_kernel_vaddr(addr))
@@ -222,18 +224,17 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 	if(!not_present)
 		return false;
 
-	struct page *page = spt_find_page(spt, addr);
 	if(page == NULL){
-		// 스택에 존재하는 지 범위 체크
+		// 스택 영역 범위 체크 (MIN_USER_STACK ~ USER_STACK)
 		if(addr >= MIN_USER_STACK && addr < USER_STACK){
-			// rsp 범위 8비트 내에 잇는지 확인
-			if (addr >= rsp - 8 || addr >= rsp) {
+			// rsp 근처의 접근만 허용 (PUSH는 rsp-8, syscall에서는 더 아래 접근 가능)
+			// rsp 아래 1MB까지 허용
+			if (addr >= rsp - 8) {  
 				vm_stack_growth(addr);
 				return true;
 			}
-		}else{
-			return false;
 		}
+		return false;
 	}
 
 	return vm_do_claim_page (page);

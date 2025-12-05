@@ -1,7 +1,9 @@
 /* anon.c: Implementation of page for non-disk image (a.k.a. anonymous page). */
 
+#include "threads/vaddr.h"
 #include "vm/vm.h"
 #include "devices/disk.h"
+#include <string.h>
 
 /* DO NOT MODIFY BELOW LINE */
 static struct disk *swap_disk;
@@ -33,18 +35,23 @@ anon_initializer (struct page *page, enum vm_type type, void *kva) {
 	struct anon_page *anon_page = &page->anon;
 	/* uy :  anon_page 정보 세팅? */
 
+	return true;
 }
 
 /* Swap in the page by read contents from the swap disk. */
 static bool
 anon_swap_in (struct page *page, void *kva) {
 	struct anon_page *anon_page = &page->anon;
+	// TODO: swap-in 구현
+	return true;
 }
 
 /* Swap out the page by writing contents to the swap disk. */
 static bool
 anon_swap_out (struct page *page) {
 	struct anon_page *anon_page = &page->anon;
+	// TODO: swap-out 구현
+	return true;
 }
 
 /* Destroy the anonymous page. PAGE will be freed by the caller. */

@@ -5,6 +5,7 @@
 #include "threads/thread.h"
 #include "threads/loader.h"
 #include "threads/init.h"
+#include "threads/vaddr.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
@@ -106,6 +107,9 @@ syscall_init (void) {
 /* The main system call interface */
 void
 syscall_handler (struct intr_frame *f) {
+	// syscall 내에서 page fault 발생 시 올바른 rsp 사용하도록 업데이트
+	thread_current()->tf.rsp = f->rsp;
+
 	uint64_t syscall_num = f -> R.rax;
 	switch (syscall_num)
 	{	
@@ -182,19 +186,39 @@ static void valid_get_addr(void *addr){
 	if(get_user(addr) < 0)
 		s_exit(-1);
 }
-/* 버퍼에서 가져오기 검사 */
-static void valid_get_buffer(char *buffer, unsigned length){
 
-	char *end = buffer + length -1;
-	if(get_user(buffer) < 0 || get_user(end) < 0)
-		s_exit(-1);
+/* 버퍼에서 가져오기 검사 - write syscall에서 읽을 버퍼 검사 */
+static void valid_get_buffer(char *buffer, unsigned length){
+	if (length == 0) return;
+
+	// 버퍼 범위의 모든 페이지를 체크
+	void *start_page = pg_round_down(buffer);
+	void *end_page = pg_round_down(buffer + length - 1);
+
+	for (void *page = start_page; page <= end_page; page += PGSIZE) {
+		// 각 페이지의 첫 바이트에 get_user로 접근 가능 여부 체크
+		valid_get_addr(page);
+	}
 }
 /* 버퍼에 쓰기 검사 */
 static void valid_put_buffer(char *buffer, unsigned length){
+	if (length == 0) return;
 
-	char *end = buffer + length -1;
-	if(put_user(buffer, 0) == 0 || put_user(end, 0) == 0)
-		s_exit(-1);
+	// 버퍼 범위의 모든 페이지를 체크하고 필요시 할당
+	void *start_page = pg_round_down(buffer);
+	void *end_page = pg_round_down(buffer + length - 1);
+
+	for (void *page = start_page; page <= end_page; page += PGSIZE) {
+		// 각 페이지의 첫 바이트 읽기로 페이지 폴트 유도 (데이터 손상 방지)
+		uint8_t val;
+		valid_get_addr(page);
+
+		// writable 체크
+		struct page *pg = spt_find_page(&thread_current()->spt, page);
+		if (pg != NULL && !pg->writable) {
+			s_exit(-1);
+		}
+	}
 }
 
 static void 
