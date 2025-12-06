@@ -32,20 +32,19 @@ file_init(struct page *page, void *aux){
 	struct file *file = arg->file;
 	off_t ofs = arg->ofs;
 	size_t page_read_bytes = arg->page_read_bytes;
-	size_t page_zero_bytes = arg->page_zero_bytes;
 
 	/* 할당받은 페이지에 파일 내용을 읽어 채운다. */
 	void *kpage = page->frame->kva;
-	if (file_read_at (file, kpage, page_read_bytes, ofs) != (int) page_read_bytes)
-		// 실패시 free 처리 추가?
-		return false;
+	size_t read_bytes = file_read_at (file, kpage, page_read_bytes, ofs);
 	
-	memset (kpage + page_read_bytes, 0, page_zero_bytes);
+	size_t page_zero_bytes = PGSIZE - read_bytes;
+
+	memset (kpage + read_bytes, 0, page_zero_bytes);
 
 	//file_page 구조체 데이터 저장
-	if(page_zero_bytes)
+	if(arg->is_last)
 		page->file.is_last = true;
-	page->file.page_read_bytes = page_read_bytes;
+	page->file.page_read_bytes = read_bytes;
 	page->file.file = file; //reopen된 page 고유 file임
 	page->file.ofs = ofs;
 
@@ -62,18 +61,23 @@ file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 	page->operations = &file_ops;
 
 	struct file_page *file_page = &page->file;
+	file_page->file = NULL;
+	file_page->is_last = false;
+	return true;
 }
 
 /* Swap in the page by read contents from the file. */
 static bool
 file_backed_swap_in (struct page *page, void *kva) {
 	struct file_page *file_page UNUSED = &page->file;
+	return true;
 }
 
 /* Swap out the page by writeback contents to the file. */
 static bool
 file_backed_swap_out (struct page *page) {
 	struct file_page *file_page UNUSED = &page->file;
+	return true;
 }
 
 /* Destory the file backed page. PAGE will be freed by the caller. */
@@ -85,9 +89,11 @@ file_backed_destroy (struct page *page) {
 	write_back(page);
 
 	if(page->file.file)
-		free(page->file.file);
+		file_close(page->file.file);
 
-	pml4_clear_page(&thread_current()->spt, page->va);	
+	pml4_clear_page(thread_current()->pml4, page->va);
+
+	list_remove(&page->frame->frame_elem);
 
 	palloc_free_page(page->frame->kva);
 }
@@ -103,14 +109,17 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 	for(int i = 0; i <= rp_max; i++){
 
 		size_t page_read_bytes = length - (i*PGSIZE) > PGSIZE ? PGSIZE : length - (i*PGSIZE);
-		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-		struct file_load_arg *arg = malloc(sizeof(struct file_load_arg));
+		// arg 세팅
+		struct file_load_arg *arg = calloc(1, sizeof(struct file_load_arg));
 		if(arg == NULL) return false;
 		arg->ofs = offset+(i*PGSIZE);
 		arg->page_read_bytes = page_read_bytes;
-		arg->page_zero_bytes = page_zero_bytes;
-		arg->file = file_reopen(file);
+		struct file *rfile = file_reopen(file);
+		if(rfile == NULL)
+			PANIC(" DEBUG : mmap file reopen fail ");
+		arg->file = rfile;
+		arg->is_last = i == rp_max ? true : false;
 
 		if(!vm_alloc_page_with_initializer(VM_FILE, addr+(i*PGSIZE), writable, file_init, arg)){
 			free(arg);
@@ -129,10 +138,14 @@ do_munmap (void *addr) {
 	while(1){
 
 		struct page *page = spt_find_page(&curr->spt, addr);
+		if(page == NULL)
+			return;
+
+		bool last = page->file.is_last;
 
 		spt_remove_page(&curr->spt, page); // destory에 write_back, pml4_clear 있음
 
-		if(page->file.is_last)
+		if(last)
 			break;
 
 		addr += PGSIZE;

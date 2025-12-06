@@ -40,6 +40,7 @@ static bool s_remove(const char *file);
 static unsigned s_tell(int fd);
 static int s_dup2(int oldfd, int newfd);
 static void *s_mmap (void *addr, size_t length, int writable, int fd, off_t offset);
+static void s_munmap(void *addr);
 
 static void valid_get_addr(void *addr);
 static void valid_get_buffer(char *addr, unsigned length);
@@ -65,8 +66,8 @@ static int64_t
 get_user (const uint8_t *uaddr) {
     int64_t result;
 
-    if (uaddr == NULL || !is_user_vaddr (uaddr))
-        return -1;
+	if (uaddr == NULL || !is_user_vaddr (uaddr))
+		return -1;
 
     __asm __volatile (
         "movabsq $done_get, %0\n"
@@ -80,8 +81,8 @@ static bool
 put_user (uint8_t *udst, uint8_t byte) {
     int64_t error_code;
 
-    if (udst == NULL || !is_user_vaddr (udst))
-        return false;
+	if (udst == NULL || !is_user_vaddr (udst))
+		return false;
 
     __asm __volatile (
         "movabsq $done_put, %0\n"
@@ -178,7 +179,11 @@ syscall_handler (struct intr_frame *f) {
 			break;
 
 		case SYS_MMAP:
-			f->R.rax = s_mmap((void *)f -> R.rdi, (size_t)f -> R.rsi, (int)f -> R.rdx, (int)f -> R.rcx, (off_t)f -> R.r8);
+			f->R.rax = s_mmap(f -> R.rdi, f -> R.rsi, f -> R.rdx, f -> R.r10, f -> R.r8);
+			break;
+
+		case SYS_MUNMAP:
+			s_munmap((void *)f -> R.rdi);
 			break;
 
 		default:
@@ -479,8 +484,20 @@ s_mmap (void *addr, size_t length, int writable, int fd, off_t offset){
 
 	/* 인자 검증 */
 	struct file_descriptor *wrapper = get_fd_wrapper(fd);
+	if(wrapper == NULL || wrapper->file == NULL)
+		return NULL;
 	enum fd_type type = wrapper->type;
-	if(length == 0 || addr == NULL || pg_round_down(addr) != addr || type == FD_STDIN || type == FD_STDOUT)
+	off_t file_len = file_length(wrapper->file);
+
+	void *end = addr+length;
+
+	if(addr == NULL || pg_round_down(addr) != addr || is_stack_vaddr(addr) || is_kernel_vaddr(addr))
+		return NULL;
+
+	if(end == NULL || is_stack_vaddr(end) || is_kernel_vaddr(end))
+		return NULL;	
+		
+	if(length == 0 || file_len == 0 || pg_ofs(offset) != 0 || file_len < offset)
 		return NULL;
 
 	/* 페이지 범위가 기존 매핑된 페이지와 겹칠 경우 검증 */
@@ -490,10 +507,16 @@ s_mmap (void *addr, size_t length, int writable, int fd, off_t offset){
 			return NULL;
 	}
 
-	if(!do_mmap(addr, length, writable, wrapper->file, offset))
-		return NULL;
+	return do_mmap(addr, length, writable, wrapper->file, offset);
+}
 
-	return true;
+static void
+s_munmap(void *addr){
+
+	valid_get_addr(addr);
+
+	do_munmap(addr);
+
 }
 
 

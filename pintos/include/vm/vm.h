@@ -100,6 +100,7 @@ struct file_load_arg {
 	size_t page_zero_bytes;
 	struct file *file;
 	off_t ofs;
+	bool is_last;
 };
 
 
