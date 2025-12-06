@@ -160,6 +160,14 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_DUP2:
 			f -> R.rax = s_dup2((int) f -> R.rdi, f -> R.rsi);
 			break;
+		
+		// case SYS_MMAP:
+		// 	f -> R.rax = s_mmap((void *) f -> R.rdi, f -> R.rsi, f -> R.rdx, f -> R.rcx, f -> R.r8);
+		// 	break;
+
+		// case SYS_MUNMAP:
+		// 	s_munmap((void *) f -> R.rdi);
+		// 	break;
 
 		default:
 			printf("undefined system call! %llu", syscall_num); 
@@ -172,8 +180,10 @@ static bool check_writable(char *buffer, unsigned length) {
 	char *start = buffer;
 	char *end = buffer + length -1;
 
-	struct page *sp = spt_find_page(&thread_current() -> spt, start);
- 	struct page *ep = spt_find_page(&thread_current() -> spt, end);
+	struct thread *cur = thread_current();
+
+	struct page *sp = spt_find_page(&cur -> spt, start);
+ 	struct page *ep = spt_find_page(&cur -> spt, end);
 
  	if ((sp != NULL && !sp->writable) || (ep != NULL && !ep->writable))
  		return false;
@@ -396,6 +406,56 @@ s_read(int fd, void *buffer, unsigned size){
 			break;
 	}
 	return bytes_rd;
+}
+
+static void *
+s_mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
+	struct file_descriptor *wrap_fd;
+	struct file *f, *mf;
+
+	if (length == 0 || addr == NULL || (uint64_t)addr & (PGSIZE - 1) || offset & (PGSIZE - 1))
+		goto err;
+	
+	wrap_fd = get_fd_wrapper(fd);
+	if (wrap_fd == NULL)
+		goto err;
+
+	if (wrap_fd -> type == FD_STDIN || wrap_fd -> type == FD_STDOUT)
+		goto err;
+	
+	f = wrap_fd->file;
+	if (f == NULL)
+		goto err;
+	
+	mf = file_reopen(f);
+
+	if (mf == NULL)
+		goto err;
+	
+	lock_acquire(&filesys_lock);
+	off_t mf_len = file_length(mf);
+	lock_release(&filesys_lock);
+	
+	if (mf_len == 0 || offset >= mf_len)
+		goto map_err;
+	
+	void *ret = do_mmap(addr, length, writable, mf, offset);
+
+	if (ret == NULL)
+		goto map_err;
+
+	return ret;
+
+map_err:
+	file_close(mf);
+
+err:
+	return NULL;
+}
+
+static void
+s_munmap (void *addr) {
+
 }
 
 static int 

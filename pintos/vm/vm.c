@@ -179,12 +179,6 @@ vm_get_frame (void) {
 	return f;
 }
 
-bool stack_init (struct page *page, void *aux){
-	/* 일단 zero-fill 정도 */
-	memset(page->frame->kva, 0, PGSIZE);
-	return true;
-}
-
 /* Growing the stack. */
 static void
 vm_stack_growth (void *addr) {
@@ -216,14 +210,11 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 	else
 		rsp = thread_current() -> rsp;
 
-	if (addr >= rsp - 8 && addr < USER_STACK && addr >= USER_STACK - (1 << 20) && is_user_vaddr(addr))
+	if (addr >= rsp - 8 && addr < USER_STACK && addr >= USER_STACK - (1 << 20))
 		vm_stack_growth(addr);
 
 	struct page *page = spt_find_page(spt, addr);
 	if(page == NULL)
-		return false;
-
-	if (write && !page->writable)
 		return false;
 
 	return vm_do_claim_page (page);
