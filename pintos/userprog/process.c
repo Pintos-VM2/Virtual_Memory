@@ -274,9 +274,17 @@ __do_fork (void *aux) {
 		goto error;
 
 	process_activate (current);
+
+	lock_acquire(&filesys_lock);
+	struct file *dup_file = file_duplicate(parent->execute_file); //dent_cnt++ 위해
+	lock_release(&filesys_lock);
+	if(dup_file == NULL)
+		goto error;
+	current->execute_file = dup_file;
+
 #ifdef VM
 	supplemental_page_table_init (&current->spt);
-	if (!supplemental_page_table_copy (current, parent))
+	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
 		goto error;
 #else
 	if (!pml4_for_each (parent->pml4, duplicate_pte, parent))

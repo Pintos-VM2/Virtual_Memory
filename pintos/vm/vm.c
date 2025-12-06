@@ -284,22 +284,16 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 
 /* Copy supplemental page table from src to dst */
 bool
-supplemental_page_table_copy (struct thread *child , struct thread *parent) {
-	
-	struct supplemental_page_table *dst = &child->spt;
-	struct supplemental_page_table *src = &parent->spt;
+supplemental_page_table_copy (struct supplemental_page_table *dst, struct supplemental_page_table *src) {
 
 	struct hash_iterator i;
+
+	struct file *exec_file = thread_current()->execute_file;
 
 	if (src == NULL)
 		return false;
 
 	hash_first(&i, &src->hash);
-
-	struct file *dup_file = file_duplicate(parent->execute_file);
-	if(dup_file == NULL)
-		return false;
-	child->execute_file = dup_file;
 
 	while (hash_next(&i) != NULL) {
 		struct hash_elem *e = hash_cur(&i);
@@ -316,9 +310,9 @@ supplemental_page_table_copy (struct thread *child , struct thread *parent) {
 				memcpy(c_aux, p_aux, sizeof(struct file_load_arg));
 
 				if(type == VM_ANON)
-					c_aux->file = dup_file;
+					c_aux->file = exec_file;
 				else if(type == VM_FILE)
-					c_aux->file = file_reopen(p_aux->file);
+					c_aux->file = file_reopen(p_aux->file); //lock 추가 해야함 일단 대기
 
 				if(!vm_alloc_page_with_initializer(p_uninit.type, p_page->va, p_page->writable, p_uninit.init, c_aux))
 					return false;
