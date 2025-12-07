@@ -45,6 +45,7 @@ static void s_munmap(void *addr);
 static void valid_get_addr(void *addr);
 static void valid_get_buffer(char *addr, unsigned length);
 static void valid_put_addr(char *addr, unsigned length);
+static bool valid_writable (void *uaddr);
 
 /* System call.
  *
@@ -211,11 +212,20 @@ static void valid_put_buffer(char *buffer, unsigned length){
 
 	char *end = buffer + length -1;
 
-	if(!check_writable(buffer) || !check_writable(end))
+	if(!valid_writable(buffer) || !valid_writable(end))
 		s_exit(-1);
 
 	if(get_user(buffer) < 0 || get_user(end) < 0)
 		s_exit(-1);
+}
+
+static bool
+valid_writable (void *uaddr) {
+	struct page *page = spt_find_page(&thread_current()->spt, uaddr);
+	if(page == NULL || page->writable)
+		return true;
+
+	return false;
 }
 
 static void 
@@ -461,7 +471,6 @@ s_tell(int fd){
 	return pos;
 }
 
-
 static int 
 s_dup2(int oldfd, int newfd){
 	if(oldfd < 0 || newfd < 0 || oldfd >= MAX_FD || newfd >= MAX_FD) return -1;
@@ -484,16 +493,13 @@ s_mmap (void *addr, size_t length, int writable, int fd, off_t offset){
 
 	/* 인자 검증 */
 	struct file_descriptor *wrapper = get_fd_wrapper(fd);
-	if(wrapper == NULL || wrapper->file == NULL)
-		return NULL;
-	enum fd_type type = wrapper->type;
+	if(wrapper == NULL || wrapper->file == NULL) return NULL; //여기서 STDIN/OUT 검증
 	off_t file_len = file_length(wrapper->file);
 
 	void *end = addr+length;
 
 	if(addr == NULL || pg_round_down(addr) != addr || is_stack_vaddr(addr) || is_kernel_vaddr(addr))
 		return NULL;
-
 	if(end == NULL || is_stack_vaddr(end) || is_kernel_vaddr(end))
 		return NULL;	
 		
@@ -512,13 +518,9 @@ s_mmap (void *addr, size_t length, int writable, int fd, off_t offset){
 
 static void
 s_munmap(void *addr){
-
 	valid_get_addr(addr);
-
 	do_munmap(addr);
-
 }
-
 
 
 /* file을 받으면 wrapper 구조체인 file_descriptor를 반환하는 함수 */

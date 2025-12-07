@@ -168,6 +168,7 @@ vm_get_victim (void) {
 
 /* Evict one page and return the corresponding frame.
  * Return NULL on error.*/
+/* frame 받아서 swap_out 처리하고, 연결 끊어서 다시 사용 */
 static struct frame *
 vm_evict_frame (void) {
 	struct frame *victim = vm_get_victim ();
@@ -186,15 +187,15 @@ vm_evict_frame (void) {
  * and return it. This always return valid address. That is, if the user pool
  * memory is full, this function evicts the frame to get the available memory
  * space.*/
+/* 물리 메모리 확보(frame 확보), 
+   남은 user pool 없으면 vm_evict_frame()으로 받아옴 */
 static struct frame *
 vm_get_frame (void) {
 
 	void *kpage = palloc_get_page(PAL_USER);
 	if (kpage == NULL)
-		// evict_frame으로 frame 재사용 
 		return vm_evict_frame();
 
-	// 아니면 새 frame 생성
 	struct frame *f = malloc(sizeof(struct frame));
 	if (f == NULL) {
 		palloc_free_page(kpage);
@@ -203,7 +204,6 @@ vm_get_frame (void) {
 		
 	f->kva = kpage;
 	f->page = NULL;
-
 	list_push_back(&frame_list, &(f->frame_elem));
 
 	return f;
@@ -229,10 +229,10 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 	struct supplemental_page_table *spt = &curr->spt;
 	void *rsp;
 
-	if(addr == NULL || is_kernel_vaddr(addr))
+	if(addr == NULL || is_kernel_vaddr(addr)) 
 		return false;	
 
-	if(!not_present)
+	if(!not_present) 
 		return false;
 
 	rsp = user ? f->rsp : curr->user_rsp;
@@ -240,14 +240,14 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 	struct page *page = spt_find_page(spt, addr);
 	if(page == NULL){
 
-		if(addr < (rsp - 8) || addr > USER_STACK || addr < MIN_USER_STACK)
+		if(addr < (rsp - 8) || !is_stack_vaddr(addr))
 			return false;
 
 		if(!vm_stack_growth(addr))
 			return false;
 
 		page = spt_find_page(spt, addr);
-		if(page == NULL)
+		if(page == NULL) 
 			return false;
 	}
 
@@ -315,13 +315,10 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst, struct supplemental_page_table *src) {
 
+	if (src == NULL) return false;
+
 	struct hash_iterator i;
-
 	struct file *exec_file = thread_current()->execute_file;
-
-	if (src == NULL)
-		return false;
-
 	hash_first(&i, &src->hash);
 
 	while (hash_next(&i) != NULL) {
@@ -338,10 +335,11 @@ supplemental_page_table_copy (struct supplemental_page_table *dst, struct supple
 				struct file_load_arg *c_aux = malloc(sizeof(struct file_load_arg));
 				memcpy(c_aux, p_aux, sizeof(struct file_load_arg));
 
+				/* type에 따라 file 연결 */
 				if(type == VM_ANON)
 					c_aux->file = exec_file;
 				else if(type == VM_FILE)
-					c_aux->file = file_reopen(p_aux->file); //lock 추가 해야함 일단 대기
+					c_aux->file = file_reopen(p_aux->file); //lock 보류
 
 				if(!vm_alloc_page_with_initializer(p_uninit.type, p_page->va, p_page->writable, p_uninit.init, c_aux))
 					return false;
@@ -376,16 +374,4 @@ static void
 page_destructor (struct hash_elem *e, void *aux UNUSED) {
 	struct page *page = hash_entry(e, struct page, hash_elem);
 	vm_dealloc_page(page); 
-}
-
-bool
-check_writable (void *uaddr) {
-	struct page *page = spt_find_page(&thread_current()->spt, uaddr);
-	if(page == NULL)
-		return true; //page아직 없는거면 그냥 리턴하고 이어서 해라
-
-	if(page->writable)
-		return true;
-
-	return false;
 }

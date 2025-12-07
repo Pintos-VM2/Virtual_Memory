@@ -159,7 +159,7 @@ initd (void *aux) {
 
 	process_init ();
 
-	if (process_exec (file_name) < 0);
+	if (process_exec (file_name) < 0)
 		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();
 }
@@ -983,7 +983,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
 static bool
 setup_stack (struct intr_frame *if_) {
-	bool success = false;
+
 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
 
 	if(!vm_alloc_page (VM_ANON | IS_STACK, stack_bottom, true))
@@ -993,8 +993,7 @@ setup_stack (struct intr_frame *if_) {
 		return false;
 
 	if_->rsp = USER_STACK;
-	success = true;
 
-	return success;
+	return true;
 }
 #endif /* VM */

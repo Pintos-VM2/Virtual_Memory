@@ -79,7 +79,6 @@ file_backed_swap_in (struct page *page, void *kva) {
 
 	size_t read_bytes = file_read_at (file, kva, page_read_bytes, ofs);
 	size_t page_zero_bytes = PGSIZE - read_bytes;
-
 	memset (kva + read_bytes, 0, page_zero_bytes);
 
 	return true;
@@ -91,8 +90,6 @@ file_backed_swap_out (struct page *page) {
 	struct file_page *file_page = &page->file;
 
 	write_back(page);
-
-	pml4_set_dirty(thread_current()->pml4, page->va, 0);
 	pml4_clear_page(thread_current()->pml4, page->va);
 
 	return true;
@@ -129,8 +126,8 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 
 		size_t page_read_bytes = length - (i*PGSIZE) > PGSIZE ? PGSIZE : length - (i*PGSIZE);
 
-		// arg 세팅
-		struct file_load_arg *arg = calloc(1, sizeof(struct file_load_arg));
+		/* arg 세팅 블럭 */
+		struct file_load_arg *arg = malloc(sizeof(struct file_load_arg));
 		if(arg == NULL) return false;
 		arg->ofs = offset+(i*PGSIZE);
 		arg->page_read_bytes = page_read_bytes;
@@ -155,15 +152,12 @@ do_munmap (void *addr) {
 	struct thread *curr = thread_current();
 
 	while(1){
-
 		struct page *page = spt_find_page(&curr->spt, addr);
-		if(page == NULL)
-			return;
+		if(page == NULL) 
+			PANIC("DEBUG : invalid addr for munmap");
 
 		bool last = page->file.is_last;
-
-		spt_remove_page(&curr->spt, page); // destory에 write_back, pml4_clear 있음
-
+		spt_remove_page(&curr->spt, page); // 내부에서 destory 호출
 		if(last)
 			break;
 
