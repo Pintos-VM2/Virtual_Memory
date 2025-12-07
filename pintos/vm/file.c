@@ -53,7 +53,6 @@ file_init(struct page *page, void *aux){
 	return true;
 }
 
-
 /* Initialize the file backed page */
 bool
 file_backed_initializer (struct page *page, enum vm_type type, void *kva) {

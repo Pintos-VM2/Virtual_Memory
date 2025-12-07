@@ -70,6 +70,7 @@ struct frame {
 	void *kva;
 	struct page *page;
 	struct list_elem frame_elem;
+	bool no_victim;
 };
 
 /* The function table for page operations.

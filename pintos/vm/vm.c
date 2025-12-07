@@ -11,6 +11,7 @@
 static void page_destructor (struct hash_elem *e, void *aux UNUSED);
 /* Global frame list for eviction */
 struct list frame_list;
+static struct list_elem *clock_hand;
 
 /* Hash function for supplemental page table */
 
@@ -140,7 +141,26 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 static struct frame *
 vm_get_victim (void) {
 	struct frame *victim = NULL;
-	 /* TODO: The policy for eviction is up to you. */
+	struct thread *curr = thread_current();
+
+	if (clock_hand == NULL || clock_hand == list_end(&frame_list))
+        clock_hand = list_begin(&frame_list);
+
+    while (true) {
+        struct frame *f = list_entry(clock_hand, struct frame, frame_elem);
+        if (!f->no_victim) {
+            if (!pml4_is_accessed(curr->pml4, f->page->va)) {
+                clock_hand = list_next(clock_hand);
+				victim = f;
+                break;
+            }
+            pml4_set_accessed(curr->pml4, f->page->va, false);
+        }
+
+        clock_hand = list_next(clock_hand);
+        if (clock_hand == list_end(&frame_list))
+            clock_hand = list_begin(&frame_list);
+    }
 
 	return victim;
 }
@@ -149,10 +169,16 @@ vm_get_victim (void) {
  * Return NULL on error.*/
 static struct frame *
 vm_evict_frame (void) {
-	struct frame *victim UNUSED = vm_get_victim ();
-	/* TODO: swap out the victim and return the evicted frame. */
+	struct frame *victim = vm_get_victim ();
 
-	return NULL;
+	if(!swap_out(victim->page))
+		PANIC("DEBUG : swap disk is full");
+
+	// page <-> frame 연결 끊기
+    victim->page->frame = NULL;
+    victim->page = NULL;
+
+	return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -164,8 +190,10 @@ vm_get_frame (void) {
 
 	void *kpage = palloc_get_page(PAL_USER);
 	if (kpage == NULL)
-		PANIC("to do");
+		// evict_frame으로 frame 재사용 
+		return vm_evict_frame();
 
+	// 아니면 새 frame 생성
 	struct frame *f = malloc(sizeof(struct frame));
 	if (f == NULL) {
 		palloc_free_page(kpage);

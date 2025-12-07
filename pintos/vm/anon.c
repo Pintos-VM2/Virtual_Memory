@@ -53,54 +53,47 @@ anon_initializer (struct page *page, enum vm_type type, void *kva) {
 static bool
 anon_swap_in (struct page *page, void *kva) {
 	struct anon_page *anon_page = &page->anon;
-	int cnt;
 
 	//idx 가져오기
 	size_t idx = anon_page->swap_slot_idx;
 	if(idx == BITMAP_ERROR) return false;
 	
 	//idx로부터 kva로 disk_read
-	int i = SECTOR_UNIT;
-	while(i--){
-		cnt = SECTOR_UNIT-i;
-		disk_read(swap_disk, idx+cnt, kva+(cnt*DISK_SECTOR_SIZE));
+	size_t start_sector = idx * SECTOR_UNIT;
+	for (int i = 0; i < SECTOR_UNIT; i++) {
+		disk_read(swap_disk, start_sector + i, kva + (i * DISK_SECTOR_SIZE));
 	}
-
 	//bitmap 0으로 만들고 anon_page update
-	bitmap_set_multiple(swap_bm, idx, SECTOR_UNIT, 0);
+	bitmap_set(swap_bm, idx, false);
 	anon_page->swap_slot_idx = BITMAP_ERROR;
 
-	//page에 물리 프레임 연결, frame table에 추가, pml4 매핑 비트 on
-	page->frame->kva = kva;
-	pml4_set_page(thread_current()->pml4, page->va, kva, page->writable);
-	list_push_back(&frame_list, &page->frame->frame_elem);
+	// //page에 물리 프레임 연결, frame table에 추가, pml4 매핑 비트 on
+	// page->frame->kva = kva;
+	// list_push_back(&frame_list, &page->frame->frame_elem);
 
 	return true;
 }
 
 /* Swap out the page by writing contents to the swap disk. */
+/* page와 연결된 frame swap_disk에 기록 */
 static bool
 anon_swap_out (struct page *page) {
 	struct anon_page *anon_page = &page->anon;
-	int cnt;
 
 	//swap_disk에서 빈 공간 찾기
-	size_t idx = bitmap_scan_and_flip(swap_bm, 0, SECTOR_UNIT, 0);
+	size_t idx = bitmap_scan_and_flip(swap_bm, 0, 1, 0);
 	if(idx == BITMAP_ERROR) return false;
 
 	// 해당 공간에 disk_write, idx 기록
-	int i = SECTOR_UNIT;
 	void *kva = page->frame->kva;
-	while(i--){
-		cnt = SECTOR_UNIT-i;
-		disk_write(swap_disk, idx+cnt, kva+(cnt*DISK_SECTOR_SIZE));
-	}
+	size_t start_sector = idx * SECTOR_UNIT;
+    for (int i = 0; i < SECTOR_UNIT; i++) {
+		disk_write(swap_disk, start_sector + i, kva + (i * DISK_SECTOR_SIZE));
+    }
 	anon_page->swap_slot_idx = idx;
 
-	//물리 프레임 회수, pml4 매핑 비트 off
+	//pml4 매핑 해제(va)
 	pml4_clear_page(thread_current()->pml4, page->va);
-	list_remove(&page->frame->frame_elem);
-	palloc_free_page(page->frame->kva);
 
 	return true;
 }
@@ -112,9 +105,9 @@ anon_destroy (struct page *page) {
 	
 	/* anon_page 구조체 만들어지면 free 추가*/
 
-	pml4_clear_page(thread_current()->pml4, page->va);
+	// pml4_clear_page(thread_current()->pml4, page->va);
 
-	list_remove(&page->frame->frame_elem);
+	// list_remove(&page->frame->frame_elem);
 
-	palloc_free_page(page->frame->kva);
+	// palloc_free_page(page->frame->kva);
 }
