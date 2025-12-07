@@ -33,11 +33,10 @@ vm_anon_init (void) {
 /* Initialize the file mapping */
 bool
 anon_initializer (struct page *page, enum vm_type type, void *kva) {
-	/* Set up the handler */
 	page->operations = &anon_ops;
-
-	/* anon_page 정보 세팅 */
 	struct anon_page *anon_page = &page->anon;
+
+	/* anon_page 초기 세팅 */
 	anon_page->type = type;
 
 	if (type & IS_STACK)	// IS_STACK 이면 stack setting
@@ -66,10 +65,6 @@ anon_swap_in (struct page *page, void *kva) {
 	//bitmap 0으로 만들고 anon_page update
 	bitmap_set(swap_bm, idx, false);
 	anon_page->swap_slot_idx = BITMAP_ERROR;
-
-	// //page에 물리 프레임 연결, frame table에 추가, pml4 매핑 비트 on
-	// page->frame->kva = kva;
-	// list_push_back(&frame_list, &page->frame->frame_elem);
 
 	return true;
 }
@@ -103,11 +98,10 @@ static void
 anon_destroy (struct page *page) {
 	struct anon_page *anon_page = &page->anon;
 	
-	/* anon_page 구조체 만들어지면 free 추가*/
+	if(page->frame){
+		list_remove(&page->frame->frame_elem);
+		palloc_free_page(page->frame->kva);
+	}
 
-	// pml4_clear_page(thread_current()->pml4, page->va);
-
-	// list_remove(&page->frame->frame_elem);
-
-	// palloc_free_page(page->frame->kva);
+	pml4_clear_page(thread_current()->pml4, page->va);
 }

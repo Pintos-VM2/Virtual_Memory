@@ -138,6 +138,7 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 }
 
 /* Get the struct frame, that will be evicted. */
+/* LRU clock 알고리즘, frame list에서 하나 꺼내서 전달 */
 static struct frame *
 vm_get_victim (void) {
 	struct frame *victim = NULL;

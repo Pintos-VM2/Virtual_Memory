@@ -66,6 +66,10 @@ uninit_destroy (struct page *page) {
 
 	/* 물리 페이지도 없고, pml4 매핑도 없음 */
 	/* page 구조체 안의 내용만 free*/
-	if(uninit->aux)
+	struct file_load_arg *arg = uninit->aux;
+	if(arg){
+		if(uninit->type == VM_FILE)
+			file_close(arg->file);
 		free(uninit->aux);
+	}
 }

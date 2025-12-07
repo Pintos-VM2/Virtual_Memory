@@ -3,6 +3,7 @@
 #include "vm/vm.h"
 #include "threads/vaddr.h"
 #include "threads/mmu.h"
+#include <stdlib.h>
 
 static bool file_backed_swap_in (struct page *page, void *kva);
 static bool file_backed_swap_out (struct page *page);
@@ -45,7 +46,7 @@ file_init(struct page *page, void *aux){
 	if(arg->is_last)
 		page->file.is_last = true;
 	page->file.page_read_bytes = read_bytes;
-	page->file.file = file; //reopen된 page 고유 file임
+	page->file.file = file; //reopen된 page 고유 file
 	page->file.ofs = ofs;
 
 	free(arg);
@@ -55,46 +56,65 @@ file_init(struct page *page, void *aux){
 
 /* Initialize the file backed page */
 bool
-file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
+file_backed_initializer (struct page *page, enum vm_type type UNUSED, void *kva UNUSED) {
 	/* Set up the handler */
 	page->operations = &file_ops;
-
 	struct file_page *file_page = &page->file;
+
+	// file_page 초기화
 	file_page->file = NULL;
 	file_page->is_last = false;
+
 	return true;
 }
 
 /* Swap in the page by read contents from the file. */
 static bool
 file_backed_swap_in (struct page *page, void *kva) {
-	struct file_page *file_page UNUSED = &page->file;
+	struct file_page *file_page = &page->file;
+
+	struct file *file = file_page->file;
+	off_t ofs = file_page->ofs;
+	size_t page_read_bytes = file_page->page_read_bytes;
+
+	size_t read_bytes = file_read_at (file, kva, page_read_bytes, ofs);
+	size_t page_zero_bytes = PGSIZE - read_bytes;
+
+	memset (kva + read_bytes, 0, page_zero_bytes);
+
 	return true;
 }
 
 /* Swap out the page by writeback contents to the file. */
 static bool
 file_backed_swap_out (struct page *page) {
-	struct file_page *file_page UNUSED = &page->file;
+	struct file_page *file_page = &page->file;
+
+	write_back(page);
+
+	pml4_set_dirty(thread_current()->pml4, page->va, 0);
+	pml4_clear_page(thread_current()->pml4, page->va);
+
 	return true;
 }
 
 /* Destory the file backed page. PAGE will be freed by the caller. */
 static void
 file_backed_destroy (struct page *page) {
-	struct file_page *file_page UNUSED = &page->file;
+	struct file_page *file_page = &page->file;
 
 	/* page 정리 */
 	write_back(page);
 
-	if(page->file.file)
-		file_close(page->file.file);
+	if(file_page->file)
+		file_close(file_page->file);
+
+	if(page->frame){
+		list_remove(&page->frame->frame_elem);
+		palloc_free_page(page->frame->kva);
+	}
 
 	pml4_clear_page(thread_current()->pml4, page->va);
-
-	list_remove(&page->frame->frame_elem);
-
-	palloc_free_page(page->frame->kva);
 }
 
 /* Do the mmap */
