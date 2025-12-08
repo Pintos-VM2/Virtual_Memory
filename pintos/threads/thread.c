@@ -558,6 +558,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->execute_file = NULL;
 	list_init(&t->child_list);
 #endif
+#ifdef VM
+	list_init(&t->mmap_list);
+#endif
 }
 
 /* 스케줄될 다음 스레드를 선택하여 반환. 실행 큐가 비어있지 않다면
