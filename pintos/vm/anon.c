@@ -100,6 +100,7 @@ anon_destroy (struct page *page) {
 	if(page->frame){
 		list_remove(&page->frame->frame_elem);
 		palloc_free_page(page->frame->kva);
+		free(page->frame);
 	}
 
 	pml4_clear_page(thread_current()->pml4, page->va);

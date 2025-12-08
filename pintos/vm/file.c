@@ -37,9 +37,7 @@ file_init(struct page *page, void *aux){
 	/* 할당받은 페이지에 파일 내용을 읽어 채운다. */
 	void *kpage = page->frame->kva;
 	size_t read_bytes = file_read_at (file, kpage, page_read_bytes, ofs);
-	
 	size_t page_zero_bytes = PGSIZE - read_bytes;
-
 	memset (kpage + read_bytes, 0, page_zero_bytes);
 
 	//file_page 구조체 데이터 저장
@@ -109,6 +107,7 @@ file_backed_destroy (struct page *page) {
 	if(page->frame){
 		list_remove(&page->frame->frame_elem);
 		palloc_free_page(page->frame->kva);
+		free(page->frame);
 	}
 
 	pml4_clear_page(thread_current()->pml4, page->va);

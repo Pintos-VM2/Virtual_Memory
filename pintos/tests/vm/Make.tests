@@ -8,7 +8,8 @@ mmap-close mmap-unmap mmap-overlap mmap-twice mmap-write mmap-ro mmap-exit	\
 mmap-shuffle mmap-bad-fd mmap-clean mmap-inherit mmap-misalign		\
 mmap-null mmap-over-code mmap-over-data mmap-over-stk mmap-remove	\
 mmap-zero mmap-bad-fd2 mmap-bad-fd3 mmap-zero-len mmap-off mmap-bad-off \
-mmap-kernel lazy-file lazy-anon swap-file swap-anon swap-iter swap-fork)
+mmap-kernel lazy-file lazy-anon swap-file swap-anon swap-iter swap-fork \
+oom)
 
 tests/vm_PROGS = $(tests/vm_TESTS) $(addprefix tests/vm/,child-linear	\
 child-sort child-qsort child-qsort-mm child-mm-wrt child-inherit child-swap)
@@ -83,6 +84,8 @@ tests/vm/lazy-anon_SRC = tests/vm/lazy-anon.c tests/lib.c tests/main.c
 
 tests/vm/child-swap_SRC = tests/vm/child-swap.c tests/lib.c tests/main.c
 
+tests/vm/oom_SRC = tests/vm/oom.c tests/lib.c tests/main.c
+
 tests/vm/pt-bad-read_PUTFILES = tests/vm/sample.txt
 tests/vm/pt-write-code2_PUTFILES = tests/vm/sample.txt
 tests/vm/mmap-close_PUTFILES = tests/vm/sample.txt
@@ -136,6 +139,8 @@ tests/vm/swap-iter.output: MEMORY = 10
 tests/vm/swap-fork.output: SWAP_DISK = 200
 tests/vm/swap-fork.output: MEMORY = 40
 tests/vm/swap-fork.output: TIMEOUT = 600
+
+tests/vm/oom.output: TIMEOUT = 600 -m 20
 
 
 tests/vm/zeros:
