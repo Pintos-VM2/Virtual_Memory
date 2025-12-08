@@ -131,6 +131,8 @@ spt_insert_page (struct supplemental_page_table *spt, struct page *page) {
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	hash_delete(&spt->hash, &page->hash_elem);
+	pml4_clear_page(thread_current()->pml4, page->va); // 프레임 매핑도 끊을 때
 	vm_dealloc_page (page);
 	return;
 }
@@ -304,29 +306,61 @@ supplemental_page_table_copy (struct thread *child , struct thread *parent) {
 		struct hash_elem *e = hash_cur(&i);
 		struct page *p_page = hash_entry(e, struct page, hash_elem);
 
-		struct uninit_page p_uninit = p_page->uninit;
-		struct file_load_arg *p_aux = p_uninit.aux;
-
 		/* ops->type 확인 */
 		switch(p_page->operations->type){
 			case VM_UNINIT:
+				struct uninit_page p_uninit = p_page->uninit;
+				struct file_load_arg *p_aux = p_uninit.aux;
 				struct file_load_arg *c_aux = malloc(sizeof(struct file_load_arg));
-				memcpy(c_aux, p_aux, sizeof(struct file_load_arg));
-				c_aux->file = dup_file;
-
-				if(!vm_alloc_page_with_initializer(p_uninit.type, p_page->va, p_page->writable, p_uninit.init, c_aux))
+				if (!c_aux)
 					return false;
+				memcpy(c_aux, p_aux, sizeof(struct file_load_arg));
+
+				if (p_aux->file) {
+					struct file *dup = file_reopen(p_aux->file);
+					if (dup == NULL) {
+						free(c_aux);
+						return false;
+					}
+					c_aux->file = dup;
+				}
+
+				if(!vm_alloc_page_with_initializer(p_uninit.type, p_page->va, p_page->writable, p_uninit.init, c_aux)) {
+					free(c_aux);
+					return false;
+				}
 				//claim 안함. 부모도 fault 대기중
 				break;
 
+			case VM_FILE: {
+				struct file_load_arg *c_aux2 = malloc(sizeof(struct file_load_arg));
+				if (!c_aux2)
+					return false;
+				c_aux2->page_read_bytes = p_page->file.read_bytes;
+				c_aux2->page_zero_bytes = p_page->file.zero_bytes;
+				c_aux2->ofs = p_page->file.ofs;
+				c_aux2->file = file_reopen(p_page->file.file);
+				if (c_aux2->file == NULL) {
+					free(c_aux2);
+					return false;
+				}
+				if (!vm_alloc_page_with_initializer(VM_FILE, p_page->va, p_page->writable, NULL, c_aux2)) {
+					free(c_aux2);
+					return false;
+				}
+				/* lazy load 유지 */
+				break;
+			}
+
 			case VM_ANON:
-			case VM_FILE:
 				if(!vm_alloc_page(p_page->operations->type, p_page->va, p_page->writable))
 					return false;
-				if(!vm_claim_page(p_page->va))
-					return false;
-				struct page *c_page = spt_find_page(&thread_current()->spt, p_page->va);
-				memcpy(c_page->frame->kva, p_page->frame->kva, PGSIZE);
+				if (p_page->frame) {
+					if(!vm_claim_page(p_page->va))
+						return false;
+					struct page *c_page = spt_find_page(&thread_current()->spt, p_page->va);
+					memcpy(c_page->frame->kva, p_page->frame->kva, PGSIZE);
+				}
 				break;
 
 			default:

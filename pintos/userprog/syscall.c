@@ -3,6 +3,7 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "threads/loader.h"
 #include "threads/init.h"
 #include "userprog/gdt.h"
@@ -39,6 +40,8 @@ static void s_seek(int fd, unsigned position);
 static bool s_remove(const char *file);
 static unsigned s_tell(int fd);
 static int s_dup2(int oldfd, int newfd);
+static void *s_mmap(void *addr, size_t length, int writable, int fd, off_t offset);
+static void s_munmap(void *addr);
 
 static void valid_get_addr(void *addr);
 static void valid_get_buffer(char *addr, unsigned length);
@@ -175,6 +178,14 @@ syscall_handler (struct intr_frame *f) {
 		case SYS_DUP2:
 			f -> R.rax = s_dup2((int) f -> R.rdi, f -> R.rsi);
 			break;
+		
+		case SYS_MMAP:
+			f -> R.rax = s_mmap((void *) f -> R.rdi, (size_t) f -> R.rsi, (int) f -> R.rdx, (int) f -> R.r10, (off_t) f ->R.r8);
+			break;
+		
+		case SYS_MUNMAP:
+			s_munmap((void *) f -> R.rdi);
+			break;
 
 		default:
 			printf("undefined system call! %llu\n", syscall_num); 
@@ -240,16 +251,16 @@ s_write (int fd, const void *buffer, unsigned length){
 			actual_byte_written = (int) length;
 			break;
 
-		case FD_FILE:
-			cur_file = wrap_fd -> file;
+	case FD_FILE:
+		cur_file = wrap_fd -> file;
 			if(cur_file == NULL || is_file_allow_write(cur_file)) {
-				actual_byte_written = -1;
-				break;
-			}
-			lock_acquire(&filesys_lock);
-			actual_byte_written = (int) file_write(cur_file, buffer, length);
-			lock_release(&filesys_lock);
+			actual_byte_written = -1;
 			break;
+		}
+		lock_acquire(&filesys_lock);
+		actual_byte_written = (int) file_write(cur_file, buffer, length);
+		lock_release(&filesys_lock);
+		break;
 	}
 	return actual_byte_written;
 };
@@ -466,6 +477,49 @@ s_dup2(int oldfd, int newfd){
 	cur -> fd_table[newfd] = wrap_oldfd;
 	wrap_oldfd -> ref_count++;
 	return newfd;
+}
+
+static void *
+s_mmap(void *addr, size_t length, int writable, int fd, off_t offset) {
+	struct file_descriptor *wrap_fd;
+	struct file *f;
+
+	if (length == 0 || offset & (PGSIZE - 1))
+		goto err;
+
+	if (addr == NULL || is_kernel_vaddr(addr) || (uint64_t)addr & (PGSIZE - 1))
+		goto err;
+	/* addr+length이 커널 영역을 넘거나 오버플로우하면 거절 */
+	if ((uint64_t) length > (uint64_t) KERN_BASE - (uint64_t) addr)
+		goto err;
+	
+	wrap_fd = get_fd_wrapper(fd);
+	if (wrap_fd == NULL)
+		goto err;
+
+	if (wrap_fd -> type == FD_STDIN || wrap_fd -> type == FD_STDOUT)
+		s_exit(-1);
+	
+	f = wrap_fd->file;
+	if (f == NULL)
+		goto err;
+	
+	void *ret = do_mmap(addr, length, writable, f, offset);
+
+	if (ret == NULL)
+		goto err;
+
+	return ret;
+
+err:
+	return NULL;
+}
+
+static void
+s_munmap(void *addr) {
+	if (addr == NULL || is_kernel_vaddr(addr) || (uint64_t)addr & (PGSIZE - 1))
+		return;
+	do_munmap(addr);
 }
 
 /* file을 받으면 wrapper 구조체인 file_descriptor를 반환하는 함수 */

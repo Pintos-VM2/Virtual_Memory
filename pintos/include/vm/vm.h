@@ -102,6 +102,13 @@ struct file_load_arg {
 	off_t ofs;
 };
 
+struct mmap_args {
+	void *vaddr;
+	size_t page_count;
+	struct file *file;
+	struct list_elem elem;
+};
+
 
 #include "threads/thread.h"
 void supplemental_page_table_init (struct supplemental_page_table *spt);

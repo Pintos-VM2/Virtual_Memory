@@ -110,6 +110,7 @@ struct thread {
 	struct list_elem elem;              /* 리스트 요소. */
 
 	struct list lock_list; 				/* 현재 쓰레드가 보유하고 있는 락 리스트 */
+	struct list mmap_list;
 	int original_priority; 	 			/* 쓰레드의 원래 우선순위 (백업용으로 저장, 수정 X) */
 	struct lock *waiting_lock;			/* 현재 쓰레드가 기다리고 있는 lock */
 	struct list *waiting_list; 			/* 현재 쓰레드가 block 되어서 대기하고 있는 리스트의 위치 */

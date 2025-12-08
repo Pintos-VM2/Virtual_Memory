@@ -552,6 +552,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->waiting_lock = NULL;
 	t->waiting_list = NULL;
 	list_init(&t->lock_list);
+	list_init(&t->mmap_list);
 #ifdef USERPROG
 	t->pf = NULL;
 	t->child_stat = NULL;

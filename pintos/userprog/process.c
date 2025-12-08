@@ -159,7 +159,7 @@ initd (void *aux) {
 
 	process_init ();
 
-	if (process_exec (file_name) < 0);
+	if (process_exec (file_name) < 0)
 		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();
 }
@@ -475,6 +475,12 @@ process_cleanup (void) {
 	}
 
 #ifdef VM
+	/* Unmap all remaining mmap regions before tearing down the SPT so that
+	   dirty pages are written back and duplicated file handles are closed. */
+	while (!list_empty(&curr->mmap_list)) {
+		struct mmap_args *args = list_entry(list_front(&curr->mmap_list), struct mmap_args, elem);
+		do_munmap(args->vaddr);
+	}
 	supplemental_page_table_kill (&curr->spt);
 #endif
 	uint64_t *pml4;
