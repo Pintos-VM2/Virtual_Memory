@@ -142,13 +142,12 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 }
 
 /* Do the munmap */
-/* page 찾아서 mmap으로 할당된 곳이면(VM_FILE이면) is_last 나올때 까지 free
+/* page 찾아서 mmap으로 할당된 곳이면 is_last 나올때까지 반복
    mmap은 연속적인 공간에 할당하기 때문에 is_last만 찾도록 디자인함*/
 void
 do_munmap (void *addr) {
 
 	struct thread *curr = thread_current();
-
 	bool last;
 
 	while(true){
@@ -158,20 +157,13 @@ do_munmap (void *addr) {
 
 		enum vm_type type = page->operations->type;
 
-		//FILE이면 last를 file_page에서 찾아옴, UNINIT(FILE 대기)이면 aux에서 찾아옴
-		if(type == VM_FILE){
-			last = page->file.is_last;
-			spt_remove_page(&curr->spt, page);
-		}
-		else{
-			if(!(page->operations->type == VM_UNINIT && page->uninit.type == VM_FILE))
-				PANIC("DEBUG : invalid addr type for munmap");
-			
-			struct file_load_arg *arg = page->uninit.aux;
-			last = arg->is_last;
-			spt_remove_page(&curr->spt, page);
-		}
+		if(type == VM_ANON)
+			PANIC("DEBUG : invalid addr type for munmap");
 
+		//FILE이면 last를 file_page에서 찾아옴, UNINIT(FILE 대기)이면 aux에서 찾아옴
+		last = (type == VM_FILE) ? page->file.is_last : ((struct file_load_arg*)page->uninit.aux)->is_last;
+		spt_remove_page(&curr->spt, page);
+		
 		if(last)
 			break;
 
