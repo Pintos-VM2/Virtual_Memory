@@ -41,12 +41,11 @@ file_init(struct page *page, void *aux){
 	memset (kpage + read_bytes, 0, page_zero_bytes);
 
 	//file_page 구조체 데이터 저장
-	struct file_page *file_page = &page->file;
-	file_page->start = arg->start;
-	file_page->end = arg->end;
-	file_page->page_read_bytes = read_bytes;
-	file_page->file = file; //reopen된 page 고유 file
-	file_page->ofs = ofs;
+	if(arg->is_last)
+		page->file.is_last = true;
+	page->file.page_read_bytes = read_bytes;
+	page->file.file = file; //reopen된 page 고유 file
+	page->file.ofs = ofs;
 
 	free(arg);
 
@@ -62,6 +61,7 @@ file_backed_initializer (struct page *page, enum vm_type type UNUSED, void *kva 
 
 	// file_page 초기화
 	file_page->file = NULL;
+	file_page->is_last = false;
 
 	return true;
 }
@@ -117,9 +117,6 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 	/* 검증은 s_mmap(호출자)에서 함 */
 	/* file의 offset 부터 length byte를 addr에 매핑한다 */
 
-	void *start = addr;
-	void *end = addr + length;
-
 	int rp_max = length / PGSIZE;
 	for(int i = 0; i <= rp_max; i++){
 
@@ -134,8 +131,7 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 		if(rfile == NULL)
 			PANIC(" DEBUG : mmap file reopen fail ");
 		arg->file = rfile;
-		arg->start = start;
-		arg->end = end;
+		arg->is_last = i == rp_max ? true : false;
 
 		if(!vm_alloc_page_with_initializer(VM_FILE, addr+(i*PGSIZE), writable, file_init, arg)){
 			free(arg);
@@ -156,8 +152,10 @@ do_munmap (void *addr) {
 		if(page == NULL) 
 			PANIC("DEBUG : invalid addr for munmap");
 
+		bool last = page->file.is_last;
 		spt_remove_page(&curr->spt, page); // 내부에서 destory 호출
-
+		if(last)
+			break;
 
 		addr += PGSIZE;
 	}

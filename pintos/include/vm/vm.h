@@ -96,12 +96,11 @@ struct supplemental_page_table {
 };
 
 struct file_load_arg {
-	void *start;
-	void *end;
 	size_t page_read_bytes;
 	size_t page_zero_bytes;
 	struct file *file;
 	off_t ofs;
+	bool is_last;
 };
 
 
