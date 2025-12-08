@@ -131,6 +131,7 @@ spt_insert_page (struct supplemental_page_table *spt, struct page *page) {
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	hash_delete(&spt->hash, &page->hash_elem);
 	vm_dealloc_page (page);
 	return;
 }
@@ -199,10 +200,10 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 	struct supplemental_page_table *spt = &curr->spt;
 	void *rsp;
 
-	if(addr == NULL || is_kernel_vaddr(addr))
+	if(addr == NULL || is_kernel_vaddr(addr)) 
 		return false;	
 
-	if(!not_present)
+	if(!not_present) 
 		return false;
 
 	rsp = user ? f->rsp : curr->user_rsp;
@@ -210,14 +211,14 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 	struct page *page = spt_find_page(spt, addr);
 	if(page == NULL){
 
-		if(addr < (rsp - 8) || addr > USER_STACK || addr < MIN_USER_STACK)
+		if(addr < (rsp - 8) || !is_stack_vaddr(addr))
 			return false;
 
 		if(!vm_stack_growth(addr))
 			return false;
 
 		page = spt_find_page(spt, addr);
-		if(page == NULL)
+		if(page == NULL) 
 			return false;
 	}
 
@@ -283,22 +284,13 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 
 /* Copy supplemental page table from src to dst */
 bool
-supplemental_page_table_copy (struct thread *child , struct thread *parent) {
-	
-	struct supplemental_page_table *dst = &child->spt;
-	struct supplemental_page_table *src = &parent->spt;
+supplemental_page_table_copy (struct supplemental_page_table *dst, struct supplemental_page_table *src) {
+
+	if (src == NULL) return false;
 
 	struct hash_iterator i;
-
-	if (src == NULL)
-		return false;
-
+	struct file *exec_file = thread_current()->execute_file;
 	hash_first(&i, &src->hash);
-
-	struct file *dup_file = file_duplicate(parent->execute_file);
-	if(dup_file == NULL)
-		return false;
-	child->execute_file = dup_file;
 
 	while (hash_next(&i) != NULL) {
 		struct hash_elem *e = hash_cur(&i);
@@ -306,13 +298,19 @@ supplemental_page_table_copy (struct thread *child , struct thread *parent) {
 
 		struct uninit_page p_uninit = p_page->uninit;
 		struct file_load_arg *p_aux = p_uninit.aux;
+		enum vm_type type = page_get_type(p_page);
 
 		/* ops->type 확인 */
 		switch(p_page->operations->type){
 			case VM_UNINIT:
 				struct file_load_arg *c_aux = malloc(sizeof(struct file_load_arg));
 				memcpy(c_aux, p_aux, sizeof(struct file_load_arg));
-				c_aux->file = dup_file;
+
+				/* type에 따라 file 연결 */
+				if(type == VM_ANON)
+					c_aux->file = exec_file;
+				else if(type == VM_FILE)
+					c_aux->file = file_reopen(p_aux->file); //lock 보류
 
 				if(!vm_alloc_page_with_initializer(p_uninit.type, p_page->va, p_page->writable, p_uninit.init, c_aux))
 					return false;
@@ -347,16 +345,4 @@ static void
 page_destructor (struct hash_elem *e, void *aux UNUSED) {
 	struct page *page = hash_entry(e, struct page, hash_elem);
 	vm_dealloc_page(page); 
-}
-
-bool
-check_writable (void *uaddr) {
-	struct page *page = spt_find_page(&thread_current()->spt, uaddr);
-	if(page == NULL)
-		return true; //page아직 없는거면 그냥 리턴하고 이어서 해라
-
-	if(page->writable)
-		return true;
-
-	return false;
 }

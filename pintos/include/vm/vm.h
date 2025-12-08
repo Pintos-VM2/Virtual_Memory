@@ -96,6 +96,8 @@ struct supplemental_page_table {
 };
 
 struct file_load_arg {
+	void *start;
+	void *end;
 	size_t page_read_bytes;
 	size_t page_zero_bytes;
 	struct file *file;
@@ -105,7 +107,7 @@ struct file_load_arg {
 
 #include "threads/thread.h"
 void supplemental_page_table_init (struct supplemental_page_table *spt);
-bool supplemental_page_table_copy (struct thread *child , struct thread *parent); 
+bool supplemental_page_table_copy (struct supplemental_page_table *dst, struct supplemental_page_table *src); 
 void supplemental_page_table_kill (struct supplemental_page_table *spt);
 struct page *spt_find_page (struct supplemental_page_table *spt,
 		void *va);
@@ -123,7 +125,5 @@ bool vm_alloc_page_with_initializer (enum vm_type type, void *upage,
 void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
-
-bool check_writable (void *uaddr);
 
 #endif  /* VM_VM_H */

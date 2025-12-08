@@ -58,4 +58,8 @@
 	((uint64_t) (vaddr) - (uint64_t) KERN_BASE);\
 })
 
+#define is_stack_vaddr(vaddr) \
+    ((uint64_t)(vaddr) <= (uint64_t)USER_STACK && \
+     (uint64_t)(vaddr) >= (uint64_t)MIN_USER_STACK)
+
 #endif /* threads/vaddr.h */
