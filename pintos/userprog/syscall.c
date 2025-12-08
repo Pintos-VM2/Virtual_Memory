@@ -204,19 +204,30 @@ static void valid_get_addr(void *addr){
 static void valid_get_buffer(char *buffer, unsigned length){
 
 	char *end = buffer + length -1;
-	if(get_user(buffer) < 0 || get_user(end) < 0)
-		s_exit(-1);
+	// 버퍼 범위의 모든 페이지를 체크
+	void *start_page = pg_round_down(buffer);
+	void *end_page = pg_round_down(end);
+
+	for (void *page = start_page; page <= end_page; page += PGSIZE) {
+		// 각 페이지의 첫 바이트에 get_user로 접근 가능 여부 체크
+		if(get_user(buffer) < 0)
+			s_exit(-1);
+	}
 }
+
 /* 버퍼에 쓰기 검사 */
 static void valid_put_buffer(char *buffer, unsigned length){
 
 	char *end = buffer + length -1;
+	// 버퍼 범위의 모든 페이지를 체크
+	void *start_page = pg_round_down(buffer);
+	void *end_page = pg_round_down(end);
 
-	if(!valid_writable(buffer) || !valid_writable(end))
-		s_exit(-1);
-
-	if(get_user(buffer) < 0 || get_user(end) < 0)
-		s_exit(-1);
+	for (void *page = start_page; page <= end_page; page += PGSIZE) {
+		// 각 페이지의 첫 바이트에 get_user로 접근 가능 여부 체크
+		if(!valid_writable(page) || get_user(page) < 0)
+			s_exit(-1);
+	}
 }
 
 static bool
@@ -380,6 +391,7 @@ s_read(int fd, void *buffer, unsigned size){
 		return 0;
 
 	valid_put_buffer(buffer, size);
+
 	struct file_descriptor *wrap_fd = get_fd_wrapper(fd);
 	int bytes_rd = -1;
 
