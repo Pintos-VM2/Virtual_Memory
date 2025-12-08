@@ -261,6 +261,7 @@ __do_fork (void *aux) {
 	struct child_status *cs = (struct child_status *) aux;
 	struct thread *parent = (struct thread *) cs -> parent;
 	struct thread *current = thread_current ();
+	struct thread *dup_file;
 	/*  */
 	struct intr_frame *parent_if = parent -> pf;
 	bool succ = true;
@@ -276,6 +277,12 @@ __do_fork (void *aux) {
 	process_activate (current);
 #ifdef VM
 	supplemental_page_table_init (&current->spt);
+	
+	dup_file = file_duplicate(parent->execute_file);
+	if(dup_file == NULL)
+		return;
+	current->execute_file = dup_file;
+
 	if (!supplemental_page_table_copy (current, parent))
 		goto error;
 #else

@@ -7,6 +7,7 @@
 #include "lib/kernel/hash.h"
 #include "threads/vaddr.h"
 #include "lib/kernel/list.h"
+#include "string.h"
 
 static void page_destructor (struct hash_elem *e, void *aux UNUSED);
 /* Global frame list for eviction */
@@ -287,11 +288,6 @@ supplemental_page_table_copy (struct thread *child , struct thread *parent) {
 
 	hash_first(&i, &src->hash);
 
-	struct thread *dup_file = file_duplicate(parent->execute_file);
-	if(dup_file == NULL)
-		return false;
-	child->execute_file = dup_file;
-
 	while (hash_next(&i) != NULL) {
 		struct hash_elem *e = hash_cur(&i);
 		struct page *p_page = hash_entry(e, struct page, hash_elem);
@@ -304,7 +300,7 @@ supplemental_page_table_copy (struct thread *child , struct thread *parent) {
 			case VM_UNINIT:
 				struct load_segment_arg *c_aux = malloc(sizeof(struct load_segment_arg));
 				memcpy(c_aux, p_aux, sizeof(struct load_segment_arg));
-				c_aux->file = dup_file;
+				c_aux->file = child->execute_file;
 
 				if(!vm_alloc_page_with_initializer(p_uninit.type, p_page->va, p_page->writable, p_uninit.init, c_aux))
 					return false;
