@@ -37,6 +37,8 @@ static void s_seek(int fd, unsigned position);
 static bool s_remove(const char *file);
 static unsigned s_tell(int fd);
 static int s_dup2(int oldfd, int newfd);
+static void* s_mmap (void *addr, size_t length, int writable, int fd, off_t offset);
+static void* s_munmap (void *addr);
 
 static void valid_get_addr(void *addr);
 static void valid_get_buffer(char *addr, unsigned length);
@@ -167,6 +169,15 @@ syscall_handler (struct intr_frame *f) {
 
 		case SYS_DUP2:
 			f -> R.rax = s_dup2((int) f -> R.rdi, f -> R.rsi);
+			break;
+		
+		case SYS_MMAP:
+			f->R.rax = (uint64_t)s_mmap((void *)f->R.rdi, (size_t)f->R.rsi, (int)f->R.rdx,
+						(int)f->R.r10, (off_t)f->R.r8);
+			break;
+		
+		case SYS_MUNMAP:
+			s_munmap((void *)f->R.rdi);
 			break;
 
 		default:
@@ -440,6 +451,57 @@ s_tell(int fd){
 	return pos;
 }
 
+static void *
+s_mmap (void *addr, size_t length, int writable, int fd, off_t offset){
+	struct file_descriptor *wrap_fd = get_fd_wrapper(fd);
+
+	/* addr 검증: 커널 주소는 안되지만, NULL은 OK (커널이 주소 선택) */
+	if (addr != NULL && !is_user_vaddr(addr)){
+		return NULL;
+	}
+
+	// wrapper 내부 fd null check
+	if(wrap_fd == NULL){
+		return NULL;
+	}
+	struct file *cur_file = wrap_fd -> file;
+
+	if(cur_file == NULL){
+		return NULL;
+	}
+
+	if (wrap_fd ->type == FD_FILE){
+		void *mapped_addr;
+
+		lock_acquire(&filesys_lock);
+
+		enum mmap_status st = do_mmap(
+			addr,
+			length,
+			writable,
+			cur_file,
+			offset,
+			&mapped_addr);
+
+		lock_release(&filesys_lock);
+
+		if (st != MMAP_OK) {
+			return NULL;
+		}
+
+		return mapped_addr;
+	}
+	return NULL;
+};
+
+static void *
+s_munmap(void* addr){
+	valid_get_addr(addr);
+	lock_acquire(&filesys_lock);
+	do_munmap(addr);
+	lock_release(&filesys_lock);
+};
+
 
 static int 
 s_dup2(int oldfd, int newfd){
@@ -488,46 +550,3 @@ struct file_descriptor *get_fd_wrapper(int fd){
 	struct file_descriptor *wrap_fd = cur -> fd_table[fd]; 
 	return wrap_fd;
 }
-
-
-
-/* TODO : 혹시 시작 주소 다음 바이트에 문제가 생기면 사용하기 */
-// static bool check_buffer(void *buffer, int length) {
-//     for (int i = 0; i < length; i++) {
-//         void *current_addr = ((char *)buffer) + i;
-//         if (check_valid_access(current_addr) == false) {
-//             return false;
-//         }
-//     }
-//     return true;
-// }
-
-
-/* Reads a byte at user virtual address UADDR.
- * UADDR must be below KERN_BASE.
- * Returns the byte value if successful, -1 if a segfault
- * occurred. */
-// static int64_t
-// get_user (const uint8_t *uaddr) {
-//     int64_t result;
-//     __asm __volatile (
-//     "movabsq $done_get, %0\n"  // $done_get의 주소 값을 rax 레지스터에 넣는 명령
-//     "movzbq %1, %0\n"		   // [uadder] 메모리에서 1바이트 가져와서 8비트 -> 64비트 zero-extend -> rax 레지스터로  
-//     "done_get:\n"		
-//     : "=&a" (result) : "m" (*uaddr)); // 출력 0번 rax -> result, 출력 1번 m(memory) -> uadder
-//     return result;
-// }
-
-// /* Writes BYTE to user address UDST.
-//  * UDST must be below KERN_BASE.
-//  * Returns true if successful, false if a segfault occurred. */
-// static bool
-// put_user (uint8_t *udst, uint8_t byte) {
-//     int64_t error_code;
-//     __asm __volatile (
-//     "movabsq $done_put, %0\n" // done_put -> rax(폴트 핸들러에서 다시 점프)
-//     "movb %b2, %1\n"		  // q의 하위 8비트 레지스터 -> m(*udst)
-//     "done_put:\n"			  // 성공 -> 그냥 넘어감, 페이지 폴트 -> 핸들러 갔다가 다시 돌아옴(rax = -1, rip = done_put)
-//     : "=&a" (error_code), "=m" (*udst) : "q" (byte));	//출력 0번 rax -> error_code, 출력 1번 m -> udst, 입력 0 q 
-//     return error_code != -1;
-// }
