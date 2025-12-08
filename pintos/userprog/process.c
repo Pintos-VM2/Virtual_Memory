@@ -456,7 +456,7 @@ process_exit (void) {
 		free(curr -> fd_table);
 		curr -> fd_table = NULL;
 	}
-	process_cleanup ();
+	process_cleanup();
 
 	/* 부모가 자식보다 먼저 죽으면 직계 자식의 자식 관련 구조체 제거 -> 추후 고아 프로세스 로직으로 대체예정(사용 금지)*/
 	// struct list_elem *e = list_begin(&curr -> child_list);
@@ -991,7 +991,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
 static bool
 setup_stack (struct intr_frame *if_) {
-
 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
 
 	if(!vm_alloc_page (VM_ANON | IS_STACK, stack_bottom, true))

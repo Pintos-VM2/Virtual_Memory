@@ -196,32 +196,33 @@ syscall_handler (struct intr_frame *f) {
 
 
 /* user 포인터 검사 */
-static void valid_get_addr(void *addr){
+static void 
+valid_get_addr(void *addr){
 	if(get_user(addr) < 0)
 		s_exit(-1);
 }
 /* 버퍼에서 가져오기 검사 */
-static void valid_get_buffer(char *buffer, unsigned length){
+static void 
+valid_get_buffer(char *buffer, unsigned length){
 
-	char *end = buffer + length -1;
 	// 버퍼 범위의 모든 페이지를 체크
 	void *start_page = pg_round_down(buffer);
-	void *end_page = pg_round_down(end);
+	void *end_page = pg_round_down(buffer + length -1);
 
 	for (void *page = start_page; page <= end_page; page += PGSIZE) {
 		// 각 페이지의 첫 바이트에 get_user로 접근 가능 여부 체크
-		if(get_user(buffer) < 0)
+		if(get_user(page) < 0)
 			s_exit(-1);
 	}
 }
 
 /* 버퍼에 쓰기 검사 */
-static void valid_put_buffer(char *buffer, unsigned length){
+static void 
+valid_put_buffer(char *buffer, unsigned length){
 
-	char *end = buffer + length -1;
 	// 버퍼 범위의 모든 페이지를 체크
 	void *start_page = pg_round_down(buffer);
-	void *end_page = pg_round_down(end);
+	void *end_page = pg_round_down(buffer + length -1);
 
 	for (void *page = start_page; page <= end_page; page += PGSIZE) {
 		// 각 페이지의 첫 바이트에 get_user로 접근 가능 여부 체크
