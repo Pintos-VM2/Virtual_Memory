@@ -10,6 +10,7 @@ static bool file_backed_swap_out (struct page *page);
 static void file_backed_destroy (struct page *page);
 
 static bool file_init(struct page *page, void *aux);
+static void write_back(struct page *page);
 
 /* DO NOT MODIFY this struct */
 static const struct page_operations file_ops = {
