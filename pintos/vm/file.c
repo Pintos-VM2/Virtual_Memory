@@ -91,7 +91,7 @@ file_backed_destroy (struct page *page) {
 void *
 do_mmap (void *addr, size_t length, int writable,
 		struct file *file, off_t offset) {
-	struct file *dup_file = file_duplicate(file);
+	struct file *dup_file = file_reopen(file);
 	if (dup_file == NULL)
 		return NULL;
 
@@ -184,7 +184,8 @@ do_munmap (void *addr) {
         }
     }
 
-    if (target_args == NULL) return;
+    if (target_args == NULL)
+		return;
 
     void *chk_addr = target_args->vaddr;
     for (size_t i = 0; i < target_args->page_count; i++) {
@@ -193,10 +194,7 @@ do_munmap (void *addr) {
         if (page) {
             if (pml4_is_dirty(cur->pml4, page->va)) {
                 lock_acquire(&filesys_lock);
-                if (page->frame) {
-                     file_write_at(target_args->file, page->frame->kva, 
-                                   page->file.read_bytes, page->file.ofs);
-                }
+                file_write_at(target_args->file, page->frame->kva, page->file.read_bytes, page->file.ofs);
                 lock_release(&filesys_lock);
                 pml4_set_dirty(cur->pml4, page->va, false);
 			}

@@ -103,10 +103,10 @@ struct file_load_arg {
 };
 
 struct mmap_args {
-	void *vaddr;
-	size_t page_count;
-	struct file *file;
-	struct list_elem elem;
+	void *vaddr;				/* 매핑 시작 가상주소 */
+	size_t page_count;			/* 매핑된 페이지 수 */
+	struct file *file;			/* mmap을 통해 매핑된 실제 파일 */
+	struct list_elem elem;		/* mmap_list로 관리하기 위한 요소 */
 };
 
 

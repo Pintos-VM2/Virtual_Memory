@@ -475,8 +475,7 @@ process_cleanup (void) {
 	}
 
 #ifdef VM
-	/* Unmap all remaining mmap regions before tearing down the SPT so that
-	   dirty pages are written back and duplicated file handles are closed. */
+	/* mmap_list를 순회하여 모든 file_backed page에 대하여 do_munmap 진행 */
 	while (!list_empty(&curr->mmap_list)) {
 		struct mmap_args *args = list_entry(list_front(&curr->mmap_list), struct mmap_args, elem);
 		do_munmap(args->vaddr);
