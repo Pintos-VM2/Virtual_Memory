@@ -67,7 +67,7 @@ static int64_t
 get_user (const uint8_t *uaddr) {
     int64_t result;
 
-	if (uaddr == NULL || !is_user_vaddr (uaddr))
+	if (uaddr == NULL || is_kernel_vaddr (uaddr))
 		return -1;
 
     __asm __volatile (
@@ -82,7 +82,7 @@ static bool
 put_user (uint8_t *udst, uint8_t byte) {
     int64_t error_code;
 
-	if (udst == NULL || !is_user_vaddr (udst))
+	if (udst == NULL || is_kernel_vaddr(udst))
 		return false;
 
     __asm __volatile (
