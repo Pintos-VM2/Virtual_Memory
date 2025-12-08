@@ -162,7 +162,7 @@ do_munmap (void *addr) {
 	}
 }
 
-void
+static void
 write_back(struct page *page){
 
 	if(!pml4_is_dirty(thread_current()->pml4, page->va))
