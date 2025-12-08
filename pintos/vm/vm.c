@@ -333,19 +333,19 @@ supplemental_page_table_copy (struct thread *child , struct thread *parent) {
 				break;
 
 			case VM_FILE: {
-				struct file_load_arg *c_aux2 = malloc(sizeof(struct file_load_arg));
-				if (!c_aux2)
+				struct file_load_arg *c_aux = malloc(sizeof(struct file_load_arg));
+				if (!c_aux)
 					return false;
-				c_aux2->page_read_bytes = p_page->file.read_bytes;
-				c_aux2->page_zero_bytes = p_page->file.zero_bytes;
-				c_aux2->ofs = p_page->file.ofs;
-				c_aux2->file = file_reopen(p_page->file.file);
-				if (c_aux2->file == NULL) {
-					free(c_aux2);
+				c_aux->page_read_bytes = p_page->file.read_bytes;
+				c_aux->page_zero_bytes = p_page->file.zero_bytes;
+				c_aux->ofs = p_page->file.ofs;
+				c_aux->file = file_reopen(p_page->file.file);
+				if (c_aux->file == NULL) {
+					free(c_aux);
 					return false;
 				}
-				if (!vm_alloc_page_with_initializer(VM_FILE, p_page->va, p_page->writable, NULL, c_aux2)) {
-					free(c_aux2);
+				if (!vm_alloc_page_with_initializer(VM_FILE, p_page->va, p_page->writable, NULL, c_aux)) {
+					free(c_aux);
 					return false;
 				}
 				/* lazy load 유지 */
