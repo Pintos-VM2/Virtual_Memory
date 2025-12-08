@@ -61,7 +61,11 @@ static void
 anon_destroy (struct page *page) {
 	struct anon_page *anon_page = &page->anon;
 	
-	/* anon_page 구조체 만들어지면 free 추가*/
+	if(page->frame){
+		list_remove(&page->frame->frame_elem);
+		palloc_free_page(page->frame->kva);
+		free(page->frame);
+	}
 
-	// palloc_free_page(page->frame->kva);
+	pml4_clear_page(thread_current()->pml4, page->va);
 }

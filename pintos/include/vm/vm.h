@@ -96,11 +96,12 @@ struct supplemental_page_table {
 };
 
 struct file_load_arg {
+	void *start;
+	void *end;
 	size_t page_read_bytes;
 	size_t page_zero_bytes;
 	struct file *file;
 	off_t ofs;
-	bool is_last;
 };
 
 
@@ -124,7 +125,5 @@ bool vm_alloc_page_with_initializer (enum vm_type type, void *upage,
 void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
 enum vm_type page_get_type (struct page *page);
-
-bool check_writable (void *uaddr);
 
 #endif  /* VM_VM_H */

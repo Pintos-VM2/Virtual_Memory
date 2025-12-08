@@ -43,12 +43,12 @@ struct initd_fn{
 /* General process initializer for initd and other process. */
 /* 프로세스가 생성될 때 (initd, fork 시) 호출될 수 있으며, 
 프로세스마다 독립적인 존재해야 할 자원을 설정하는 것이다. 예시 -> 파일 디스크립터 */
-static void
+static bool
 process_init (void) {
 	struct thread *current = thread_current ();
 	current -> fd_table = malloc(sizeof (struct file_descriptor *) * MAX_FD);
 	if(current -> fd_table == NULL){
-		return;
+		return false;
 	}
 	for(int i = 0; i < MAX_FD; i++){
 		current -> fd_table[i] = NULL;
@@ -57,18 +57,20 @@ process_init (void) {
 	struct file_descriptor *fd_0 = create_fd_wrapper((struct file *) NULL, FD_STDIN);
 	if(fd_0 == NULL) {
 		free(current -> fd_table);
-		return;
+		return false;
 	}
 
 	struct file_descriptor *fd_1 = create_fd_wrapper((struct file *) NULL, FD_STDOUT);
 	if(fd_1 == NULL) {
 		free(current -> fd_table);
 		free(fd_0);
-		return;
+		return false;
 	} 
 
 	current -> fd_table[0] = fd_0;
 	current -> fd_table[1] = fd_1;
+
+	return true;
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
@@ -159,7 +161,7 @@ initd (void *aux) {
 
 	process_init ();
 
-	if (process_exec (file_name) < 0);
+	if (process_exec (file_name) < 0)
 		PANIC("Fail to launch initd\n");
 	NOT_REACHED ();
 }
@@ -292,7 +294,8 @@ __do_fork (void *aux) {
 #endif
 
 	/* 파일 디스크립터 복사 -> 복사 성공해야만 프로세스 복제 성공이라 볼 수 있음 -> 즉, 세마포어로 시그널 전송해야 함 (fork_sema, fork_success 필요)*/
-	process_init ();
+	if(!process_init())
+		goto error;
 
 	/* TODO: create_fd_wrapper 실패, file_duplicate 실패의 핸들링 고려하기 (누수 가능성)*/
 	for(int i = 0; i < MAX_FD; i++){
@@ -453,7 +456,7 @@ process_exit (void) {
 		free(curr -> fd_table);
 		curr -> fd_table = NULL;
 	}
-	process_cleanup ();
+	process_cleanup();
 
 	/* 부모가 자식보다 먼저 죽으면 직계 자식의 자식 관련 구조체 제거 -> 추후 고아 프로세스 로직으로 대체예정(사용 금지)*/
 	// struct list_elem *e = list_begin(&curr -> child_list);
@@ -983,7 +986,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
 static bool
 setup_stack (struct intr_frame *if_) {
-	bool success = false;
 	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
 
 	if(!vm_alloc_page (VM_ANON | IS_STACK, stack_bottom, true))
@@ -993,8 +995,7 @@ setup_stack (struct intr_frame *if_) {
 		return false;
 
 	if_->rsp = USER_STACK;
-	success = true;
 
-	return success;
+	return true;
 }
 #endif /* VM */
