@@ -120,29 +120,49 @@ do_mmap (void *addr, size_t length, int writable, struct file *file, off_t offse
 
 	/* 검증은 s_mmap(호출자)에서 함 */
 	/* file의 offset 부터 length byte를 addr에 매핑한다 */
-
+	int i;
 	int rp_max = length / PGSIZE;
-	for(int i = 0; i <= rp_max; i++){
-
+	for(i = 0; i <= rp_max; i++){
 		size_t page_read_bytes = length - (i*PGSIZE) > PGSIZE ? PGSIZE : length - (i*PGSIZE);
 
-		/* arg 세팅 블럭 */
+		/* arg 세팅 */
 		struct file_load_arg *arg = malloc(sizeof(struct file_load_arg));
-		if(arg == NULL) return false;
+		if(arg == NULL){
+			goto error;
+		}
+
 		arg->ofs = offset+(i*PGSIZE);
 		arg->page_read_bytes = page_read_bytes;
-		struct file *rfile = file_reopen(file);
-		if(rfile == NULL)
-			PANIC(" DEBUG : mmap file reopen fail ");
-		arg->file = rfile;
 		arg->is_last = i == rp_max ? true : false;
 
-		if(!vm_alloc_page_with_initializer(VM_FILE, addr+(i*PGSIZE), writable, file_init, arg)){
+		struct file *rfile = file_reopen(file);
+		if(rfile == NULL){
 			free(arg);
-			return false;
+			goto error;
+		}
+		arg->file = rfile;
+
+		if(!vm_alloc_page_with_initializer(VM_FILE, addr+(i*PGSIZE), writable, file_init, arg)){
+			file_close(rfile);
+			free(arg);
+			goto error;
 		}
 	}
+
 	return addr;
+
+error:
+	//만들다가 실패할 경우, spt에 넣었던 내용 rollback
+	struct thread *curr = thread_current();
+	int rep = i;
+	for(int j = 0; j < i; j++){
+		struct page *page = spt_find_page(&curr->spt, addr+(j*PGSIZE));
+		if (page != NULL) {
+			spt_remove_page(&thread_current()->spt, page);
+		}
+	}
+
+	return NULL;
 }
 
 /* Do the munmap */
