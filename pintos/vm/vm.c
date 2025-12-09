@@ -100,6 +100,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 			free(page);
 			goto err;
 		}
+		page->pml4 = thread_current()->pml4;
 
 		return true;
 	}
@@ -142,7 +143,6 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 static struct frame *
 vm_get_victim (void) {
 	struct frame *victim = NULL;
-	struct thread *curr = thread_current();
 
 	if (clock_hand == NULL || clock_hand == list_end(&frame_list))
         clock_hand = list_begin(&frame_list);
@@ -150,12 +150,12 @@ vm_get_victim (void) {
     while (true) {
         struct frame *f = list_entry(clock_hand, struct frame, frame_elem);
         if (!f->no_victim) {
-            if (!pml4_is_accessed(curr->pml4, f->page->va)) {
+            if (!pml4_is_accessed(f->page->pml4, f->page->va)) {
                 clock_hand = list_next(clock_hand);
 				victim = f;
                 break;
             }
-            pml4_set_accessed(curr->pml4, f->page->va, false);
+            pml4_set_accessed(f->page->pml4, f->page->va, false);
         }
 
         clock_hand = list_next(clock_hand);
@@ -193,8 +193,9 @@ static struct frame *
 vm_get_frame (void) {
 
 	void *kpage = palloc_get_page(PAL_USER);
-	if (kpage == NULL)
+	if (kpage == NULL){
 		return vm_evict_frame();
+	}
 
 	struct frame *f = malloc(sizeof(struct frame));
 	if (f == NULL) {

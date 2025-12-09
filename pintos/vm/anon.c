@@ -87,7 +87,7 @@ anon_swap_out (struct page *page) {
 	anon_page->swap_slot_idx = idx;
 
 	//pml4 매핑 해제(va)
-	pml4_clear_page(thread_current()->pml4, page->va);
+	pml4_clear_page(page->pml4, page->va);
 
 	return true;
 }

@@ -50,7 +50,7 @@ struct page {
 
 	/* Your implementation */
 	struct hash_elem hash_elem;
-
+	uint64_t *pml4;
 	bool writable;
 
 	/* Per-type data are binded into the union.

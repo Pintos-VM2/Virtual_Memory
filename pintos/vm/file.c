@@ -89,7 +89,7 @@ file_backed_swap_out (struct page *page) {
 	struct file_page *file_page = &page->file;
 
 	write_back(page);
-	pml4_clear_page(thread_current()->pml4, page->va);
+	pml4_clear_page(page->pml4, page->va); 
 
 	return true;
 }
@@ -198,7 +198,7 @@ do_munmap (void *addr) {
 static void
 write_back(struct page *page){
 
-	if(!pml4_is_dirty(thread_current()->pml4, page->va))
+	if(page->frame == NULL || !pml4_is_dirty(page->pml4, page->va))
 		return;
 
 	off_t ofs = page->file.ofs;
