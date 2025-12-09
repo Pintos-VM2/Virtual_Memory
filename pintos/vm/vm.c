@@ -11,6 +11,7 @@
 static void page_destructor (struct hash_elem *e, void *aux UNUSED);
 /* Global frame list for eviction */
 struct list frame_list;
+static struct list_elem *clock_hand = NULL;
 
 /* Hash function for supplemental page table */
 
@@ -140,19 +141,64 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 static struct frame *
 vm_get_victim (void) {
 	struct frame *victim = NULL;
-	 /* TODO: The policy for eviction is up to you. */
+	
+	if(list_empty(&frame_list)){
+		return NULL;
+	}
+	
+	 // 초기화: clock_hand가 NULL이면 리스트 시작점으로
+	if (clock_hand == NULL || clock_hand == list_end(&frame_list)){
+		clock_hand = list_begin(&frame_list);
+	}
+
+	// frame list 전체를 순회
+	for (struct list_elem *e = list_begin(&frame_list);
+		e != list_end(&frame_list); e = list_next(e)) {
+    	struct frame *f = list_entry(e, struct frame, frame_elem);
+
+		// frame이 page와 연결되어 있지 않으면 skip
+		if (f->page == NULL)
+			continue;
+
+		if (!pml4_is_accessed(thread_current()->pml4, f->page->va)) {
+        	victim = f;
+        	break;
+    	} else {
+        	pml4_set_accessed(thread_current()->pml4, f->page->va, false);
+    	}
+  	}
+
+	// 순회에서 못찾은 경우 - 첫 번째 유효한 frame 선택
+	if(victim == NULL){
+		for (struct list_elem *e = list_begin(&frame_list);
+			e != list_end(&frame_list); e = list_next(e)) {
+			struct frame *f = list_entry(e, struct frame, frame_elem);
+			if (f->page != NULL) {
+				victim = f;
+				break;
+			}
+		}
+	}
 
 	return victim;
 }
+
 
 /* Evict one page and return the corresponding frame.
  * Return NULL on error.*/
 static struct frame *
 vm_evict_frame (void) {
-	struct frame *victim UNUSED = vm_get_victim ();
-	/* TODO: swap out the victim and return the evicted frame. */
+	struct frame *victim = vm_get_victim ();
 
-	return NULL;
+	if (victim == NULL || victim->page == NULL)
+		return NULL;
+
+	swap_out(victim->page);
+
+	victim->page->frame = NULL;
+	victim->page = NULL;
+
+	return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -163,15 +209,19 @@ static struct frame *
 vm_get_frame (void) {
 
 	void *kpage = palloc_get_page(PAL_USER);
-	if (kpage == NULL)
-		PANIC("to do");
+	if (kpage == NULL) {
+		struct frame *evicted = vm_evict_frame();
+		if (evicted == NULL)
+			PANIC("Cannot evict frame");
+		return evicted;
+	}
 
 	struct frame *f = malloc(sizeof(struct frame));
 	if (f == NULL) {
 		palloc_free_page(kpage);
 		PANIC("memory allocation failed");
 	}
-		
+
 	f->kva = kpage;
 	f->page = NULL;
 

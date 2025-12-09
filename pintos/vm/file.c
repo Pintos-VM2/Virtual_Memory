@@ -87,7 +87,11 @@ file_backed_swap_in (struct page *page, void *kva) {
 static bool
 file_backed_swap_out (struct page *page) {
 	struct file_page *file_page = &page->file;
+	
+	write_back(page);
 
+	pml4_clear_page(thread_current()->pml4, page->va);
+	
 	return true;
 }
 
@@ -194,6 +198,9 @@ do_munmap (void *addr) {
 
 static void
 write_back(struct page *page){
+
+	if(page->frame == NULL)
+		return;
 
 	if(!pml4_is_dirty(thread_current()->pml4, page->va))
 		return;
