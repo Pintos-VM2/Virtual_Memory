@@ -180,7 +180,7 @@ syscall_handler (struct intr_frame *f) {
 			break;
 
 		case SYS_MMAP:
-			f->R.rax = s_mmap(f -> R.rdi, f -> R.rsi, f -> R.rdx, f -> R.r10, f -> R.r8);
+			f->R.rax = (uint64_t)s_mmap((void *)f -> R.rdi, f -> R.rsi, f -> R.rdx, f -> R.r10, f -> R.r8);
 			break;
 
 		case SYS_MUNMAP:
