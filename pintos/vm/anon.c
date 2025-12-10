@@ -3,6 +3,9 @@
 #include "vm/vm.h"
 #include "devices/disk.h"
 
+#define SECTOR_UNIT 8 //(PGSIZE / DISK_SECTOR_SIZE)
+struct bitmap *swap_bm;
+
 /* DO NOT MODIFY BELOW LINE */
 static struct disk *swap_disk;
 static bool anon_swap_in (struct page *page, void *kva);
@@ -20,25 +23,26 @@ static const struct page_operations anon_ops = {
 /* Initialize the data for anonymous pages */
 void
 vm_anon_init (void) {
-	/* TODO: Set up the swap_disk. */
-	swap_disk = NULL;
+	/* Set up the swap_disk. */
+	swap_disk = disk_get(1,1);
+	/* swap slot 관리 bitmap 세팅 */
+	size_t swap_slot_cnt = disk_size(swap_disk) * DISK_SECTOR_SIZE / PGSIZE;
+	swap_bm = bitmap_create(swap_slot_cnt);
 }
 
 /* Initialize the file mapping */
 bool
 anon_initializer (struct page *page, enum vm_type type, void *kva) {
-	/* Set up the handler */
 	page->operations = &anon_ops;
-
-	/* anon_page 정보 세팅 */
 	struct anon_page *anon_page = &page->anon;
+
+	/* anon_page 초기 세팅 */
 	anon_page->type = type;
 
-	/* IS_STACK 이면 stack setting */
-	if (type & IS_STACK)
+	if (type & IS_STACK)	// IS_STACK 이면 stack setting
 		memset(kva, 0, PGSIZE);
-
-	/* todo : 그냥 ANON이면 추가 */
+	
+	anon_page->swap_slot_idx = BITMAP_ERROR;
 
 	return true;
 }
@@ -47,13 +51,45 @@ anon_initializer (struct page *page, enum vm_type type, void *kva) {
 static bool
 anon_swap_in (struct page *page, void *kva) {
 	struct anon_page *anon_page = &page->anon;
-	//return true;
+
+	//idx 가져오기
+	size_t idx = anon_page->swap_slot_idx;
+	if(idx == BITMAP_ERROR) return false;
+	
+	//idx로부터 kva로 disk_read
+	size_t start_sector = idx * SECTOR_UNIT;
+	for (int i = 0; i < SECTOR_UNIT; i++) {
+		disk_read(swap_disk, start_sector + i, kva + (i * DISK_SECTOR_SIZE));
+	}
+	//bitmap 0으로 만들고 anon_page idx update
+	bitmap_set(swap_bm, idx, false);
+	anon_page->swap_slot_idx = BITMAP_ERROR;
+
+	return true;
 }
 
 /* Swap out the page by writing contents to the swap disk. */
+/* page와 연결된 frame swap_disk에 기록 */
 static bool
 anon_swap_out (struct page *page) {
 	struct anon_page *anon_page = &page->anon;
+
+	//swap_disk에서 빈 공간 찾기
+	size_t idx = bitmap_scan_and_flip(swap_bm, 0, 1, 0);
+	if(idx == BITMAP_ERROR) return false;
+
+	// 해당 공간에 disk_write, idx 기록
+	void *kva = page->frame->kva;
+	size_t start_sector = idx * SECTOR_UNIT;
+    for (int i = 0; i < SECTOR_UNIT; i++) {
+		disk_write(swap_disk, start_sector + i, kva + (i * DISK_SECTOR_SIZE));
+    }
+	anon_page->swap_slot_idx = idx;
+
+	//pml4 매핑 해제(va)
+	pml4_clear_page(page->pml4, page->va);
+
+	return true;
 }
 
 /* Destroy the anonymous page. PAGE will be freed by the caller. */

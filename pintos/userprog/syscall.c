@@ -392,7 +392,7 @@ s_read(int fd, void *buffer, unsigned size){
 		return 0;
 
 	valid_put_buffer(buffer, size);
-	
+
 	struct file_descriptor *wrap_fd = get_fd_wrapper(fd);
 	int bytes_rd = -1;
 

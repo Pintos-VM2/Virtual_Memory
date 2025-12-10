@@ -11,6 +11,7 @@
 static void page_destructor (struct hash_elem *e, void *aux UNUSED);
 /* Global frame list for eviction */
 struct list frame_list;
+static struct list_elem *clock_hand;
 
 /* Hash function for supplemental page table */
 
@@ -99,6 +100,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 			free(page);
 			goto err;
 		}
+		page->pml4 = thread_current()->pml4;
 
 		return true;
 	}
@@ -137,34 +139,63 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 }
 
 /* Get the struct frame, that will be evicted. */
+/* LRU clock 알고리즘, frame list에서 하나 꺼내서 전달 */
 static struct frame *
 vm_get_victim (void) {
 	struct frame *victim = NULL;
-	 /* TODO: The policy for eviction is up to you. */
+
+	if (clock_hand == NULL || clock_hand == list_end(&frame_list))
+        clock_hand = list_begin(&frame_list);
+
+    while (true) {
+        struct frame *f = list_entry(clock_hand, struct frame, frame_elem);
+        if (!f->no_victim) {
+            if (!pml4_is_accessed(f->page->pml4, f->page->va)) {
+                clock_hand = list_next(clock_hand);
+				victim = f;
+                break;
+            }
+            pml4_set_accessed(f->page->pml4, f->page->va, false);
+        }
+
+        clock_hand = list_next(clock_hand);
+        if (clock_hand == list_end(&frame_list))
+            clock_hand = list_begin(&frame_list);
+    }
 
 	return victim;
 }
 
 /* Evict one page and return the corresponding frame.
  * Return NULL on error.*/
+/* frame 받아서 swap_out 처리하고, 연결 끊어서 다시 사용 */
 static struct frame *
 vm_evict_frame (void) {
-	struct frame *victim UNUSED = vm_get_victim ();
-	/* TODO: swap out the victim and return the evicted frame. */
+	struct frame *victim = vm_get_victim ();
 
-	return NULL;
+	if(!swap_out(victim->page))
+		PANIC("DEBUG : swap disk is full");
+
+	// page <-> frame 연결 끊기
+    victim->page->frame = NULL;
+    victim->page = NULL;
+
+	return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
  * and return it. This always return valid address. That is, if the user pool
  * memory is full, this function evicts the frame to get the available memory
  * space.*/
+/* 물리 메모리 확보(frame 확보), 
+   남은 user pool 없으면 vm_evict_frame()으로 받아옴 */
 static struct frame *
 vm_get_frame (void) {
 
 	void *kpage = palloc_get_page(PAL_USER);
-	if (kpage == NULL)
-		PANIC("to do");
+	if (kpage == NULL){
+		return vm_evict_frame();
+	}
 
 	struct frame *f = malloc(sizeof(struct frame));
 	if (f == NULL) {
@@ -174,7 +205,6 @@ vm_get_frame (void) {
 		
 	f->kva = kpage;
 	f->page = NULL;
-
 	list_push_back(&frame_list, &(f->frame_elem));
 
 	return f;

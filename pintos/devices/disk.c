@@ -231,6 +231,7 @@ disk_read (struct disk *d, disk_sector_t sec_no, void *buffer) {
    acknowledged receiving the data.
    Internally synchronizes accesses to disks, so external
    per-disk locking is unneeded. */
+/* buffer의 내용을 sec_no칸 disk d에 넣기*/
 void
 disk_write (struct disk *d, disk_sector_t sec_no, const void *buffer) {
 	struct channel *c;

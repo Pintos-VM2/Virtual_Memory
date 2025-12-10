@@ -922,8 +922,13 @@ lazy_load_segment (struct page *page, void *aux) {
 
 	/* 할당받은 페이지에 파일 내용을 읽어 채운다. */
 	void *kpage = page->frame->kva;
-	if (file_read_at (file, kpage, page_read_bytes, ofs) != (int) page_read_bytes)
+
+	lock_acquire(&filesys_lock);
+	if (file_read_at (file, kpage, page_read_bytes, ofs) != (int) page_read_bytes){
+		lock_release(&filesys_lock);
 		return false; // 실패시 free 처리 추가?
+	}
+	lock_release(&filesys_lock);
 	
 	memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
