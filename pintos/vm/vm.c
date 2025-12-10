@@ -11,6 +11,7 @@
 static void page_destructor (struct hash_elem *e, void *aux UNUSED);
 /* Global frame list for eviction */
 struct list frame_list;
+static struct list_elem *clock_hand = NULL;
 
 /* Hash function for supplemental page table */
 
@@ -140,19 +141,45 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 static struct frame *
 vm_get_victim (void) {
 	struct frame *victim = NULL;
-	 /* TODO: The policy for eviction is up to you. */
+	/* TODO: The policy for eviction is up to you. */
 
-	return victim;
+	while (true) {
+		if (clock_hand == NULL || clock_hand == list_end(&frame_list))
+			clock_hand = list_begin(&frame_list);
+
+		struct frame *f = list_entry(clock_hand, struct frame, frame_elem);
+		struct page *p = f->page;
+
+		if (p != NULL) {
+			bool accessed = pml4_is_accessed(f->pml4, p->va);
+			if (accessed)
+				pml4_set_accessed(f->pml4, p->va, false);
+			else
+				return f;
+		}
+		clock_hand = list_next(clock_hand);
+	}
 }
 
 /* Evict one page and return the corresponding frame.
  * Return NULL on error.*/
 static struct frame *
 vm_evict_frame (void) {
-	struct frame *victim UNUSED = vm_get_victim ();
+	struct frame *victim = vm_get_victim ();
 	/* TODO: swap out the victim and return the evicted frame. */
+	if (victim == NULL)
+		return NULL;
+	
+		struct page *p = victim->page;
+		if (!swap_out(p))
+			return NULL;
+		
+		p->frame = NULL;
+		victim->page = NULL;
 
-	return NULL;
+		pml4_clear_page(victim->pml4, p->va);
+	
+	return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -161,12 +188,18 @@ vm_evict_frame (void) {
  * space.*/
 static struct frame *
 vm_get_frame (void) {
+	struct frame *f = NULL;
 
 	void *kpage = palloc_get_page(PAL_USER);
-	if (kpage == NULL)
-		PANIC("to do");
+	if (kpage == NULL) {
+		f = vm_evict_frame();
+		if (f == NULL)
+			return NULL;
+		f->pml4 = thread_current() -> pml4;
+		return f;
+	}
 
-	struct frame *f = malloc(sizeof(struct frame));
+	f = malloc(sizeof(struct frame));
 	if (f == NULL) {
 		palloc_free_page(kpage);
 		PANIC("memory allocation failed");
@@ -174,6 +207,7 @@ vm_get_frame (void) {
 		
 	f->kva = kpage;
 	f->page = NULL;
+	f->pml4 = thread_current()->pml4;
 
 	list_push_back(&frame_list, &(f->frame_elem));
 
@@ -209,7 +243,7 @@ vm_try_handle_fault (struct intr_frame *f, void *addr, bool user, bool write, bo
 	rsp = user ? f->rsp : curr->user_rsp;
 
 	struct page *page = spt_find_page(spt, addr);
-	if(page == NULL){
+	if(page == NULL) {
 
 		if(addr < (rsp - 8) || !is_stack_vaddr(addr))
 			return false;
@@ -270,6 +304,7 @@ error:
     frame->page = NULL;
 
     /* frame 자원 회수 */
+    list_remove(&frame->frame_elem);
     palloc_free_page(frame->kva);
     free(frame);
 

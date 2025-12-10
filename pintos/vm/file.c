@@ -87,9 +87,6 @@ file_backed_swap_in (struct page *page, void *kva) {
 static bool
 file_backed_swap_out (struct page *page) {
 	write_back(page);
-	pml4_clear_page(thread_current()->pml4, page);
-	page->frame->kva = NULL;
-	page->frame = NULL;
 	return true;
 }
 
@@ -99,7 +96,8 @@ file_backed_destroy (struct page *page) {
 	struct file_page *file_page = &page->file;
 
 	/* page 정리 */
-	write_back(page);
+	if (page->frame)
+		write_back(page);
 
 	if(file_page->file)
 		file_close(file_page->file);
@@ -177,7 +175,11 @@ do_munmap (void *addr) {
 static void
 write_back(struct page *page){
 
-	if(!pml4_is_dirty(thread_current()->pml4, page->va))
+	if(page->frame == NULL)
+		return;
+
+	uint64_t *pml4 = page->frame->pml4;
+	if(!pml4_is_dirty(pml4, page->va))
 		return;
 
 	off_t ofs = page->file.ofs;
@@ -186,4 +188,5 @@ write_back(struct page *page){
 
 	if(file_write_at(file, page->frame->kva, read_bytes, ofs) != (int) read_bytes)
 		PANIC("DEBUG : write back 오류 !!! ");
+	pml4_set_dirty(pml4, page->va, false);
 }
